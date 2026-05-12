@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "Habit": {
+      "title": "Habit",
+      "description": "A daily ritual to maintain alignment",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "streak": { "type": "integer" },
+        "completed": { "type": "boolean" },
+        "reminderTime": { "type": "string", "description": "HH:mm format" },
+        "ownerId": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "streak", "completed", "ownerId"]
+    },
+    "Desire": {
+      "title": "Desire",
+      "description": "A goal or intention to manifest",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "category": { "type": "string" },
+        "date": { "type": "string" },
+        "isAchieved": { "type": "boolean" },
+        "ownerId": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["text", "category", "date", "isAchieved", "ownerId"]
+    },
+    "VisionItem": {
+      "title": "Vision Item",
+      "description": "An image representing the desired future",
+      "type": "object",
+      "properties": {
+        "imageUrl": { "type": "string" },
+        "caption": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["imageUrl", "caption", "ownerId"]
+    },
+    "FrequencyLog": {
+      "title": "Frequency Log",
+      "description": "A daily check-in of emotional vibration",
+      "type": "object",
+      "properties": {
+        "level": { "type": "integer", "description": "1 to 10 scale of energy" },
+        "mood": { "type": "string" },
+        "note": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "ownerId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["level", "mood", "date", "ownerId", "timestamp"]
+    },
+    "DiaryEntry": {
+      "title": "Diary Entry",
+      "description": "A personal scripted manifestation entry",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string" },
+        "method": { "type": "string", "enum": ["free", "369", "555"] },
+        "ownerId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["content", "method", "ownerId", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/habits/{habitId}": {
+      "schema": "Habit",
+      "description": "Collection of daily habits"
+    },
+    "/desires/{desireId}": {
+      "schema": "Desire",
+      "description": "Collection of manifest desires"
+    },
+    "/vision_items/{itemId}": {
+      "schema": "VisionItem",
+      "description": "Collection of vision board items"
+    },
+    "/frequency_logs/{logId}": {
+      "schema": "FrequencyLog",
+      "description": "User daily frequency tracking"
+    },
+    "/diary_entries/{entryId}": {
+      "schema": "DiaryEntry",
+      "description": "Personal manifestation scripts and diary"
+    }
+  }
+}

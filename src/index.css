@@ -1,0 +1,151 @@
+@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400..700&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-serif: "Playfair Display", serif;
+  --font-script: "Dancing Script", cursive;
+  --color-cosmic-black: #02040a;
+  --color-cosmic-void: #0a0b14;
+  --color-stardust: #e2e8f0;
+}
+
+@layer base {
+  body {
+    @apply antialiased bg-cosmic-black text-stardust selection:bg-white/20 selection:text-white overflow-x-hidden;
+  }
+  
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  *::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide scrollbar for IE, Edge and Firefox */
+  * {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+}
+
+@keyframes nebula-drift {
+  0% { transform: translate(0, 0) rotate(0deg) scale(1); }
+  33% { transform: translate(2%, 2%) rotate(2deg) scale(1.05); }
+  66% { transform: translate(-1%, 3%) rotate(-1deg) scale(0.95); }
+  100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+}
+
+@keyframes shooting-star {
+  0% { transform: translateX(0) translateY(0) rotate(215deg) scale(0); opacity: 0; }
+  10% { opacity: 1; scale: 1; }
+  20% { transform: translateX(-500px) translateY(500px) rotate(215deg) scale(1); opacity: 0; }
+  100% { transform: translateX(-500px) translateY(500px) rotate(215deg) scale(0); opacity: 0; }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.1); }
+}
+
+@keyframes star-move {
+  from { transform: translateY(0); }
+  to { transform: translateY(-100vh); }
+}
+
+@keyframes star-zoom {
+  from { transform: scale(1); opacity: 0; }
+  50% { opacity: 1; }
+  to { transform: scale(1.5); opacity: 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  25% { transform: translateY(-10px) translateX(5px); }
+  50% { transform: translateY(-20px) translateX(-5px); }
+  75% { transform: translateY(-10px) translateX(-10px); }
+}
+
+.animate-nebula {
+  animation: nebula-drift 20s ease-in-out infinite;
+}
+
+.animate-shooting-star {
+  animation: shooting-star 3s linear infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 60s linear infinite;
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 8s ease-in-out infinite;
+}
+
+.animate-star-move {
+  animation: star-move var(--duration, 100s) linear infinite;
+}
+
+.animate-star-zoom {
+  animation: star-zoom var(--duration, 20s) ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 20s ease-in-out infinite;
+}
+
+.glass-card {
+  @apply bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl;
+}
+
+.cosmic-gradient {
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 50%, transparent 100%);
+}
+
+@keyframes gargantua-spin {
+  from { transform: rotate(0deg) scale(1); }
+  to { transform: rotate(360deg) scale(1.1); }
+}
+
+@keyframes event-horizon-pulse {
+  0%, 100% { box-shadow: 0 0 50px 20px rgba(255, 255, 255, 0.1), inset 0 0 100px #000; }
+  50% { box-shadow: 0 0 100px 40px rgba(255, 255, 255, 0.15), inset 0 0 150px #000; }
+}
+
+@keyframes accretion-drift {
+  0% { transform: translateY(-5%) scale(1); opacity: 0.7; }
+  50% { transform: translateY(5%) scale(1.05); opacity: 0.9; }
+  100% { transform: translateY(-5%) scale(1); opacity: 0.7; }
+}
+
+.animate-gargantua {
+  animation: gargantua-spin 40s linear infinite;
+}
+
+.animate-event-horizon {
+  animation: event-horizon-pulse 10s ease-in-out infinite;
+}
+
+.animate-accretion {
+  animation: accretion-drift 15s ease-in-out infinite;
+}
+
+.black-hole-glow {
+  background: radial-gradient(circle at center, transparent 30%, rgba(255, 255, 255, 0.1) 40%, rgba(255, 255, 255, 0.05) 60%, transparent 80%);
+}
+
+.accretion-disk {
+  background: conic-gradient(
+    from 180deg at 50% 50%,
+    transparent 0deg,
+    rgba(255, 255, 255, 0.1) 90deg,
+    rgba(255, 255, 255, 0.2) 180deg,
+    rgba(255, 255, 255, 0.1) 270deg,
+    transparent 360deg
+  );
+  filter: blur(20px);
+}

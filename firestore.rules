@@ -1,0 +1,124 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(data) {
+      return isSignedIn() && data.ownerId == request.auth.uid;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Validation helpers
+    function isValidHabit(data) {
+      return data.keys().hasAll(['name', 'streak', 'completed', 'ownerId']) &&
+             data.name is string && data.name.size() <= 200 &&
+             data.streak is int && data.streak >= 0 &&
+             data.completed is bool &&
+             data.ownerId == request.auth.uid &&
+             (!('reminderTime' in data) || (data.reminderTime is string && data.reminderTime.size() <= 5));
+    }
+
+    function isValidDesire(data) {
+      return data.keys().hasAll(['text', 'category', 'date', 'isAchieved', 'ownerId']) &&
+             data.text is string && data.text.size() <= 1000 &&
+             data.category is string && data.category.size() <= 100 &&
+             data.date is string &&
+             data.isAchieved is bool &&
+             data.ownerId == request.auth.uid;
+    }
+
+    function isValidVisionItem(data) {
+      return data.keys().hasAll(['imageUrl', 'caption', 'ownerId']) &&
+             data.imageUrl is string && data.imageUrl.size() <= 2000 &&
+             data.caption is string && data.caption.size() <= 500 &&
+             data.ownerId == request.auth.uid;
+    }
+
+    function isValidFrequencyLog(data) {
+      return data.keys().hasAll(['level', 'mood', 'date', 'ownerId', 'timestamp']) &&
+             data.level is int && data.level >= 1 && data.level <= 10 &&
+             data.mood is string && data.mood.size() <= 100 &&
+             data.date is string &&
+             data.ownerId == request.auth.uid &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidDiaryEntry(data) {
+      return data.keys().hasAll(['content', 'method', 'ownerId', 'timestamp']) &&
+             data.content is string && data.content.size() <= 10000 &&
+             data.method in ['free', '369', '555'] &&
+             data.ownerId == request.auth.uid &&
+             data.timestamp is timestamp;
+    }
+
+    // Collection matches
+    match /habits/{habitId} {
+      allow get: if isOwner(existing());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidHabit(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidHabit(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['completed', 'streak', 'updatedAt']) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'reminderTime', 'updatedAt'])
+      );
+      allow delete: if isOwner(existing());
+    }
+
+    match /desires/{desireId} {
+      allow get: if isOwner(existing());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidDesire(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidDesire(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['isAchieved', 'updatedAt']) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['text', 'category', 'updatedAt'])
+      );
+      allow delete: if isOwner(existing());
+    }
+
+    match /vision_items/{itemId} {
+      allow get: if isOwner(existing());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidVisionItem(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidVisionItem(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['caption', 'imageUrl', 'updatedAt'])
+      );
+      allow delete: if isOwner(existing());
+    }
+
+    match /frequency_logs/{logId} {
+      allow get: if isOwner(existing());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidFrequencyLog(incoming());
+      allow update: if false; // Logs are immutable snapshots of frequency
+      allow delete: if isOwner(existing());
+    }
+
+    match /diary_entries/{entryId} {
+      allow get: if isOwner(existing());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidDiaryEntry(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidDiaryEntry(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['content', 'timestamp'])
+      );
+      allow delete: if isOwner(existing());
+    }
+  }
+}
