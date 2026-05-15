@@ -65,12 +65,61 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["content", "method", "ownerId", "timestamp"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile and subscription data",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "tier": { "type": "string", "enum": ["Novice", "Adept", "Ascendant"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "tier"]
+    },
+    "HabitLog": {
+      "title": "Habit Log",
+      "description": "Historical metrics for a habit completion",
+      "type": "object",
+      "properties": {
+        "habitId": { "type": "string" },
+        "duration": { "type": "integer", "description": "Duration in minutes" },
+        "intensity": { "type": "integer", "description": "Intensity scale 1-10" },
+        "mood": { "type": "string", "description": "Mood after completion" },
+        "ownerId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["habitId", "ownerId", "timestamp"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "An income or expense record for abundance tracking",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "amount": { "type": "number" },
+        "label": { "type": "string" },
+        "category": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "amount", "label", "ownerId", "timestamp"]
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and subscription levels"
+    },
     "/habits/{habitId}": {
       "schema": "Habit",
       "description": "Collection of daily habits"
+    },
+    "/habit_logs/{logId}": {
+      "schema": "HabitLog",
+      "description": "Historical records of habit completions with metrics"
     },
     "/desires/{desireId}": {
       "schema": "Desire",
@@ -87,6 +136,10 @@
     "/diary_entries/{entryId}": {
       "schema": "DiaryEntry",
       "description": "Personal manifestation scripts and diary"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Abundance and expense tracking"
     }
   }
 }

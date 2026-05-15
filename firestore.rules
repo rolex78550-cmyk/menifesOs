@@ -27,39 +27,37 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isServerTimestamp(ts) {
+      return ts is timestamp && ts == request.time;
+    }
+
     // Validation helpers
     function isValidHabit(data) {
-      return data.keys().hasAll(['name', 'streak', 'completed', 'ownerId']) &&
+      return data.keys().hasAll(['name', 'streak', 'completed', 'ownerId', 'updatedAt']) &&
              data.name is string && data.name.size() <= 200 &&
              data.streak is int && data.streak >= 0 &&
              data.completed is bool &&
              data.ownerId == request.auth.uid &&
+             isServerTimestamp(data.updatedAt) &&
              (!('reminderTime' in data) || (data.reminderTime is string && data.reminderTime.size() <= 5));
     }
 
     function isValidDesire(data) {
-      return data.keys().hasAll(['text', 'category', 'date', 'isAchieved', 'ownerId']) &&
+      return data.keys().hasAll(['text', 'category', 'date', 'isAchieved', 'ownerId', 'updatedAt']) &&
              data.text is string && data.text.size() <= 1000 &&
              data.category is string && data.category.size() <= 100 &&
              data.date is string &&
              data.isAchieved is bool &&
-             data.ownerId == request.auth.uid;
+             data.ownerId == request.auth.uid &&
+             isServerTimestamp(data.updatedAt);
     }
 
     function isValidVisionItem(data) {
-      return data.keys().hasAll(['imageUrl', 'caption', 'ownerId']) &&
-             data.imageUrl is string && data.imageUrl.size() <= 2000 &&
-             data.caption is string && data.caption.size() <= 500 &&
-             data.ownerId == request.auth.uid;
-    }
-
-    function isValidFrequencyLog(data) {
-      return data.keys().hasAll(['level', 'mood', 'date', 'ownerId', 'timestamp']) &&
-             data.level is int && data.level >= 1 && data.level <= 10 &&
-             data.mood is string && data.mood.size() <= 100 &&
-             data.date is string &&
+      return data.keys().hasAll(['imageUrl', 'caption', 'ownerId', 'updatedAt']) &&
+             data.imageUrl is string && data.imageUrl.size() <= 1000000 &&
+             data.caption is string && data.caption.size() <= 1000 &&
              data.ownerId == request.auth.uid &&
-             data.timestamp is timestamp;
+             isServerTimestamp(data.updatedAt);
     }
 
     function isValidDiaryEntry(data) {
@@ -67,10 +65,81 @@ service cloud.firestore {
              data.content is string && data.content.size() <= 10000 &&
              data.method in ['free', '369', '555'] &&
              data.ownerId == request.auth.uid &&
-             data.timestamp is timestamp;
+             isServerTimestamp(data.timestamp);
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'tier', 'updatedAt']) &&
+             data.email is string &&
+             data.tier in ['Novice', 'Adept', 'Ascendant'] &&
+             isServerTimestamp(data.updatedAt);
+    }
+
+    function isValidHabitLog(data) {
+      return data.keys().hasAll(['habitId', 'ownerId', 'timestamp']) &&
+             data.habitId is string &&
+             data.ownerId == request.auth.uid &&
+             isServerTimestamp(data.timestamp) &&
+             (!('duration' in data) || data.duration is int) &&
+             (!('intensity' in data) || (data.intensity is int && data.intensity >= 1 && data.intensity <= 10)) &&
+             (!('mood' in data) || (data.mood is string && data.mood.size() <= 100));
+    }
+
+    function isValidFrequencyLog(data) {
+      return data.keys().hasAll(['level', 'mood', 'date', 'ownerId', 'timestamp']) &&
+             data.level is int && data.level >= 1 && data.level <= 10 &&
+             data.mood is string &&
+             data.date is string &&
+             data.ownerId == request.auth.uid &&
+             isServerTimestamp(data.timestamp);
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['type', 'amount', 'label', 'ownerId', 'timestamp']) &&
+             data.type in ['income', 'expense'] &&
+             (data.amount is int || data.amount is float) &&
+             data.label is string && data.label.size() <= 200 &&
+             data.ownerId == request.auth.uid &&
+             isServerTimestamp(data.timestamp) &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 100));
     }
 
     // Collection matches
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().tier == 'Novice';
+      allow update: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt']) ||
+        // Allow the client to set tier ONLY if it's currently null/non-existent (initialization)
+        // Actually, my server handles upgrades, so I'll just allow basic profile updates.
+        (existing().tier == incoming().tier && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'tier', 'updatedAt']))
+      );
+    }
+
+    match /transactions/{transactionId} {
+      allow get: if isOwner(existing());
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidTransaction(incoming());
+      allow update: if isOwner(existing()) && isValidTransaction(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['label', 'amount', 'category', 'timestamp'])
+      );
+      allow delete: if isOwner(existing());
+    }
+
+    match /habit_logs/{logId} {
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if isOwner(existing());
+      allow create: if isSignedIn() && isValidHabitLog(incoming());
+      allow delete: if isOwner(existing());
+    }
+
+    match /frequency_logs/{logId} {
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if isOwner(existing());
+      allow create: if isSignedIn() && isValidFrequencyLog(incoming());
+      allow delete: if isOwner(existing());
+    }
+
     match /habits/{habitId} {
       allow get: if isOwner(existing());
       allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
@@ -100,14 +169,6 @@ service cloud.firestore {
       allow update: if isSignedIn() && isOwner(existing()) && isValidVisionItem(incoming()) && (
         incoming().diff(existing()).affectedKeys().hasOnly(['caption', 'imageUrl', 'updatedAt'])
       );
-      allow delete: if isOwner(existing());
-    }
-
-    match /frequency_logs/{logId} {
-      allow get: if isOwner(existing());
-      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
-      allow create: if isSignedIn() && isValidFrequencyLog(incoming());
-      allow update: if false; // Logs are immutable snapshots of frequency
       allow delete: if isOwner(existing());
     }
 
