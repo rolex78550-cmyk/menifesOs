@@ -1,5 +1,13 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, User } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  onAuthStateChanged, 
+  User, 
+  updateProfile,
+  signOut
+} from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -58,10 +66,20 @@ export async function testConnection() {
 
 export const loginWithGoogle = async () => {
   try {
-    await signInWithPopup(auth, googleProvider);
-  } catch (error) {
+    const result = await signInWithPopup(auth, googleProvider);
+    return result;
+  } catch (error: any) {
     console.error("Login failed:", error);
+    if (error.code === 'auth/popup-blocked') {
+      alert("Popup Blocked: Please allow popups for this site to sign in.");
+    } else if (error.code === 'auth/operation-not-allowed') {
+      alert("Auth Error: Google Sign-In is not enabled in your Firebase Console. Please go to Authentication > Sign-in method and enable Google.");
+    } else {
+      alert("Login failed: " + (error.message || "Unknown error"));
+    }
+    throw error;
   }
 };
 
 export const logout = () => auth.signOut();
+export { updateProfile };

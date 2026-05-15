@@ -16,7 +16,12 @@ Vercel is the easiest place to host Full-Stack React + Express apps.
    - `VITE_RAZORPAY_KEY_ID`
    - `RAZORPAY_SECRET_KEY`
    - `GEMINI_API_KEY`
-5. **Domain**: Go to Settings > Domains. Type your domain name (e.g., `manifestlom.com`) and follow the DNS instructions.
+5. **Authorized Domains (CRITICAL for Auth)**:
+   - Go to [Firebase Console](https://console.firebase.google.com/).
+   - Select your project.
+   - Go to **Authentication > Settings > Authorized Domains**.
+   - Add your Vercel URL (e.g., `yourapp.vercel.app`).
+6. **Domain**: Go to Settings > Domains. Type your domain name (e.g., `manifestlom.com`) and follow the DNS instructions.
 
 ## Option B: Firebase (If you prefer Google's Ecosystem)
 To host the full-stack app on Firebase, you need the Firebase CLI.

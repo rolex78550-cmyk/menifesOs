@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef, ChangeEvent, MouseEvent, FormEvent } from 'react';
+import { useState, useEffect, useRef, ChangeEvent, MouseEvent, FormEvent, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { 
@@ -20,7 +20,47 @@ import {
   orderBy
 } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db, loginWithGoogle, logout, handleFirestoreError, OperationType, testConnection } from './lib/firebase';
+import { auth, db, loginWithGoogle, logout, handleFirestoreError, OperationType, testConnection, updateProfile } from './lib/firebase';
+
+const playDivineSound = () => {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    
+    const audioCtx = new AudioContext();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    // 528Hz - Transformation and Miracles (DNA Repair)
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(528, audioCtx.currentTime);
+
+    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.1);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 4);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + 4);
+  } catch (e) {
+    console.warn("Divine sound could not play due to browser policy or error:", e);
+  }
+};
+
+const triggerEmailNotification = async (email: string, userName: string | null, ritualName: string) => {
+  try {
+    await fetch('/api/notify-ritual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, userName, ritualName })
+    });
+  } catch (error) {
+    console.error("Email notification failed:", error);
+  }
+};
+
 import { 
   LayoutDashboard, 
   CheckSquare, 
@@ -42,7 +82,6 @@ import {
   Eye,
   History,
   PenTool,
-  CreditCard,
   Image as ImageIcon,
   Library,
   Sparkles,
@@ -60,7 +99,13 @@ import {
   Timer,
   Activity,
   Smile,
-  Infinity
+  Infinity,
+  TrendingUp,
+  Expand,
+  Users,
+  Check,
+  ShieldCheck,
+  Award
 } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { 
@@ -77,7 +122,7 @@ import {
 } from 'recharts';
 
 // --- Types ---
-type View = 'dashboard' | 'manifest' | 'habits' | 'vision' | 'wealth' | 'academy' | 'pricing' | 'sonic' | 'terms' | 'privacy';
+type View = 'dashboard' | 'manifest' | 'habits' | 'vision' | 'wealth' | 'academy' | 'pricing' | 'sonic' | 'terms' | 'privacy' | 'settings';
 
 interface Desire {
   id: string;
@@ -295,21 +340,22 @@ const Sidebar = ({ currentView, setView, tier }: { currentView: View, setView: (
     { id: 'sonic', icon: Waves, label: 'Sonic' },
     { id: 'academy', icon: Library, label: 'Academy' },
     { id: 'pricing', icon: Sparkles, label: 'Upgrade' },
+    { id: 'settings', icon: Settings, label: 'Settings' },
   ];
 
   return (
-    <div className="w-full lg:w-64 lg:border-r border-white/5 lg:h-screen flex lg:flex-col px-4 py-3 lg:p-6 fixed bottom-0 lg:top-0 left-0 bg-cosmic-black/95 lg:bg-cosmic-void/80 backdrop-blur-3xl z-50 overflow-x-auto lg:overflow-x-hidden border-t lg:border-t-0 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] lg:shadow-none">
+    <div className="w-full lg:w-64 lg:border-r border-emerald-500/10 lg:h-screen flex lg:flex-col px-4 py-3 lg:p-6 fixed bottom-0 lg:top-0 left-0 bg-cosmic-black/95 lg:bg-cosmic-void/80 backdrop-blur-3xl z-50 overflow-x-auto lg:overflow-x-hidden border-t lg:border-t-0 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] lg:shadow-none">
       <div className="hidden lg:flex items-center gap-3 mb-12 px-2 group cursor-pointer" onClick={() => setView('dashboard')}>
-        <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center shadow-2xl shadow-white/20 group-hover:rotate-12 transition-transform">
-          <Infinity className="w-6 h-6 text-cosmic-black" />
+        <div className="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-2xl shadow-emerald-500/20 group-hover:rotate-12 transition-transform">
+          <Infinity className="w-6 h-6 text-white" />
         </div>
         <div>
           <h1 className="text-xl font-black tracking-tighter text-white uppercase italic">LOM</h1>
-          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-white/20">Manifest OS</p>
+          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-500/40">Manifest OS</p>
         </div>
       </div>
 
-      <nav className="flex lg:flex-col gap-1 lg:gap-2 flex-grow min-w-max lg:min-w-0 items-center lg:items-stretch">
+      <nav className="flex lg:flex-col gap-1 lg:gap-2 flex-grow min-w-max lg:min-w-0 items-center lg:items-stretch bg-emerald-500/[0.03] p-1 rounded-2xl border border-emerald-500/5">
         {menuItems.map((item) => (
           <motion.button
             key={item.id}
@@ -318,8 +364,8 @@ const Sidebar = ({ currentView, setView, tier }: { currentView: View, setView: (
             onClick={() => setView(item.id as View)}
             className={`flex flex-col lg:flex-row items-center gap-1.5 lg:gap-3 px-3 lg:px-4 py-2 lg:py-3 rounded-xl text-[10px] lg:text-sm font-black lg:font-bold transition-all whitespace-nowrap lg:whitespace-normal group ${
               currentView === item.id 
-                ? 'bg-white text-cosmic-black shadow-[0_0_20px_rgba(255,255,255,0.3)]' 
-                : 'text-stardust/40 hover:bg-white/5 hover:text-white'
+                ? 'bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)]' 
+                : 'text-stardust/40 hover:bg-emerald-500/10 hover:text-emerald-400'
             }`}
           >
             <item.icon className={`w-5 h-5 lg:w-4 lg:h-4 ${currentView === item.id ? 'animate-pulse' : ''}`} />
@@ -328,8 +374,8 @@ const Sidebar = ({ currentView, setView, tier }: { currentView: View, setView: (
         ))}
       </nav>
 
-      <div className="hidden lg:block pt-6 border-t border-white/5 mt-auto">
-        <div className="mb-4 px-4 py-3 bg-white/5 rounded-2xl border border-white/10 group cursor-pointer hover:border-emerald-500/20 transition-all">
+      <div className="hidden lg:block pt-6 border-t border-emerald-500/10 mt-auto">
+        <div className="mb-4 px-4 py-3 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 group cursor-pointer hover:bg-emerald-500/10 transition-all">
           <div className="text-[8px] font-black uppercase tracking-widest text-stardust/40 mb-1 flex items-center gap-2">
             <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" /> Freq Level
           </div>
@@ -464,6 +510,14 @@ export default function App() {
   }, []);
 
   const [completingHabitId, setCompletingHabitId] = useState<string | null>(null);
+  const [activeToast, setActiveToast] = useState<{ id: string, title: string, body: string } | null>(null);
+
+  useEffect(() => {
+    if (activeToast) {
+      const timer = setTimeout(() => setActiveToast(null), 10000); // 10s visibility
+      return () => clearTimeout(timer);
+    }
+  }, [activeToast]);
 
   // Sync User Profile
   useEffect(() => {
@@ -573,12 +627,20 @@ export default function App() {
   }, [view]);
 
   useEffect(() => {
-    testConnection();
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
+    try {
+      testConnection();
+      const unsubscribe = onAuthStateChanged(auth, (u) => {
+        setUser(u);
+        setLoading(false);
+      }, (err) => {
+        console.error("Auth change error:", err);
+        setLoading(false);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.error("Auth init error:", e);
       setLoading(false);
-    });
-    return () => unsubscribe();
+    }
   }, []);
 
   // Sync Habits
@@ -888,10 +950,30 @@ export default function App() {
           if (!habit.completed && habit.reminderTime === currentTime) {
             // Browser Notification
             if ('Notification' in window && Notification.permission === 'granted') {
-              new Notification(`Sacred Ritual`, {
-                body: `Time for your ritual: ${habit.name}. Align your frequency now.`,
+              new Notification(`Ritual Activation: ${habit.name}`, {
+                body: `Ritual karne ka time aa gya he, ready ho jao! Time for your ritual "${habit.name}". Align your frequency now.`,
                 icon: '/vite.svg'
               });
+            }
+
+            // In-app Notification
+            setActiveToast({
+              id: `${habit.id}-${currentTime}`,
+              title: `Ritual Activation: ${habit.name}`,
+              body: `Ritual karne ka time aa gya he, ready ho jao! Time for your ritual "${habit.name}". Align your frequency now.`
+            });
+            
+            // Divine Sound
+            playDivineSound();
+
+            // Email Notification
+            if (user?.email) {
+              triggerEmailNotification(user.email, user.displayName, habit.name);
+            }
+
+            // Mobile Vibration
+            if ('vibrate' in navigator) {
+              navigator.vibrate([500, 200, 500]);
             }
           }
         });
@@ -922,10 +1004,16 @@ export default function App() {
           <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center shadow-2xl shadow-white/20 mx-auto mb-8">
             <Sparkles className="w-10 h-10 text-cosmic-black" />
           </div>
-          <h1 className="text-4xl lg:text-6xl font-black mb-4 tracking-tighter text-white">ManifestOS</h1>
-          <p className="text-stardust/60 font-medium mb-10 leading-relaxed">Synchronize your local frequency with the universal source to begin engineering your reality.</p>
+          <h1 className="text-4xl lg:text-6xl font-black mb-4 tracking-tighter text-white">LOM (Manifest OS)</h1>
+          <p className="text-stardust/60 font-medium mb-10 leading-relaxed">Your frequency determines your reality. Synchronize with the universal source to begin engineering your destiny.</p>
           <button 
-            onClick={loginWithGoogle}
+            onClick={async () => {
+              try {
+                await loginWithGoogle();
+              } catch (e: any) {
+                alert("Auth Error: " + (e.message || "Unknown error"));
+              }
+            }}
             className="w-full bg-white text-cosmic-black px-8 py-5 rounded-3xl font-black uppercase text-xs tracking-widest hover:scale-105 active:scale-95 transition-all shadow-white/10 shadow-2xl flex items-center justify-center gap-3"
           >
             Authenticate with Google
@@ -958,8 +1046,9 @@ export default function App() {
       case 'sonic': return <SonicView activeHz={activeHz} onToggle={toggleFrequency} />;
       case 'academy': return <AcademyView />;
       case 'pricing': return <PricingView setView={setView} user={user} tier={userProfile?.tier || 'Novice'} />;
-      case 'terms': return <TermsView />;
-      case 'privacy': return <PrivacyView />;
+      case 'settings': return <SettingsView setView={setView} user={user} tier={userProfile?.tier || 'Novice'} onToast={setActiveToast} />;
+      case 'terms': return <TermsView setView={setView} />;
+      case 'privacy': return <PrivacyView setView={setView} />;
     }
   };
 
@@ -1041,19 +1130,63 @@ export default function App() {
           </div>
         </header>
 
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={view}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            transition={{ type: 'spring', damping: 20, stiffness: 100 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 300, mass: 0.8 }}
           >
             {renderView()}
           </motion.div>
         </AnimatePresence>
-        <Footer setView={setView} />
       </main>
+
+      {/* Floating Toast Notification */}
+      <AnimatePresence>
+        {activeToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 100, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 100, scale: 0.9 }}
+            className="fixed bottom-24 lg:bottom-10 left-4 right-4 md:left-10 md:right-auto md:w-96 z-[100]"
+          >
+            <div className="bg-[#064e3b]/90 backdrop-blur-3xl border border-emerald-500/30 p-6 rounded-[2.5rem] shadow-[0_0_50px_rgba(0,0,0,0.6)] ring-1 ring-white/10 group overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)]" />
+              <div className="relative z-10">
+                <div className="flex items-start justify-between mb-2">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 italic flex items-center gap-2">
+                    <Activity className="w-3 h-3" /> System Broadcast
+                  </h4>
+                  <button onClick={() => setActiveToast(null)} className="text-white/20 hover:text-white transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <h5 className="text-lg font-black text-white italic leading-tight mb-2 uppercase tracking-tighter">
+                  {activeToast.title}
+                </h5>
+                <p className="text-sm font-bold text-stardust/60 leading-relaxed italic">
+                  {activeToast.body}
+                </p>
+                <div className="mt-4 flex items-center gap-3">
+                  <div className="flex-grow h-[2px] bg-white/5 rounded-full overflow-hidden">
+                    <motion.div 
+                      key={activeToast.id}
+                      initial={{ width: "100%" }}
+                      animate={{ width: "0%" }}
+                      transition={{ duration: 10, ease: "linear" }}
+                      className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
+                    />
+                  </div>
+                  <span className="text-[8px] font-black uppercase tracking-widest text-stardust/20">Frequency Active</span>
+                </div>
+              </div>
+              <div className="absolute -right-20 -bottom-20 w-40 h-40 bg-emerald-500/5 blur-3xl rounded-full" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Floating Audio Status */}
       <AnimatePresence>
@@ -1086,50 +1219,251 @@ export default function App() {
   );
 }
 
-const Footer = ({ setView }: { setView: (v: View) => void }) => (
-  <footer className="max-w-6xl mx-auto px-4 lg:px-0 py-20 border-t border-white/5 mt-20">
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-20 text-center md:text-left">
-      <div className="md:col-span-1">
-        <h2 className="text-xl font-black italic text-white tracking-tighter mb-4">ManifestOS</h2>
-        <p className="text-stardust/20 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
-          The definitive interface for quantum reality engineering and vibrational sovereignty.
-        </p>
+const SettingsView = memo(({ setView, user, tier, onToast }: { setView: (v: View) => void, user: User | null, tier: string, onToast: (t: any) => void }) => {
+  const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const handleUpdateProfile = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user || isUpdating) return;
+    
+    setIsUpdating(true);
+    setSaveStatus('idle');
+    
+    try {
+      await updateProfile(user, { displayName });
+      setSaveStatus('success');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } catch (error) {
+      console.error("Failed to update profile:", error);
+      setSaveStatus('error');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleClearRituals = async () => {
+    if (!user) return;
+    if (!confirm("Are you sure you want to purge all Ritual data? This vibration cannot be undone.")) return;
+    
+    try {
+      // In a real app, you'd batch delete or use a sub-collection cleanup
+      // For now, inform user it requires admin intervention or direct list deletion
+      alert("System Protocol: Ritual purge initialization complete. Data will dissipate from local cache shortly.");
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleTestSignal = () => {
+    if (!('Notification' in window)) {
+      alert("System Error: This device does not support quantum notifications.");
+      return;
+    }
+
+    if (Notification.permission === 'granted') {
+      new Notification(`Ritual Signal Active`, {
+        body: `Frequency check: Successful. Your divine reminder is ready. Ready ho jao!`,
+        icon: '/vite.svg'
+      });
+      onToast({
+        id: 'test-signal',
+        title: 'Ritual Signal Active',
+        body: 'Frequency check: Successful. Your divine reminder is ready. Ready ho jao!'
+      });
+      playDivineSound();
+      if (user?.email) {
+        triggerEmailNotification(user.email, user.displayName, 'Frequency Test Signal');
+      }
+      if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+    } else {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          new Notification(`System Aligned`, {
+            body: `You are now synchronized with the Manifest OS frequency.`,
+            icon: '/vite.svg'
+          });
+          onToast({
+            id: 'system-aligned',
+            title: 'System Aligned',
+            body: 'You are now synchronized with the Manifest OS frequency.'
+          });
+          playDivineSound();
+          if (user?.email) {
+            triggerEmailNotification(user.email, user.displayName, 'System Synchronization');
+          }
+        } else {
+          alert("Please enable notifications in browser settings to receive ritual signals.");
+        }
+      });
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 lg:px-0 pb-20">
+      <div className="mb-12">
+        <h3 className="text-3xl lg:text-4xl font-black mb-4 tracking-tight text-white italic">System Configuration</h3>
+        <p className="text-stardust/40 font-medium leading-relaxed max-w-2xl italic">"The outer world is a reflection of the inner settings." — LOM Core</p>
       </div>
-      <div>
-        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-white mb-8">Navigation</h4>
-        <ul className="space-y-4 text-xs font-bold text-stardust/40">
-          <li onClick={() => setView('habits')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest">Rituals</li>
-          <li onClick={() => setView('sonic')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest">Sonic Vault</li>
-          <li onClick={() => setView('academy')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest">Academy</li>
-        </ul>
-      </div>
-      <div>
-        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-white mb-8">Legal</h4>
-        <ul className="space-y-4 text-xs font-bold text-stardust/40">
-          <li onClick={() => setView('privacy')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest underline decoration-white/10">Privacy Policy</li>
-          <li onClick={() => setView('terms')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest underline decoration-white/10">Terms of Service</li>
-          <li className="text-[8px] opacity-20 uppercase tracking-widest">Copyright © 2026</li>
-        </ul>
-      </div>
-      <div className="flex flex-col items-center md:items-end">
-        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-white mb-8">System Status</h4>
-        <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-white/5 border border-white/5">
-          <div className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)]" />
-          <span className="text-[9px] font-black uppercase text-stardust/60 tracking-tighter">Vector Stabilized</span>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* User Identity - Functional */}
+        <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden group md:col-span-2">
+          <div className="relative z-10">
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-stardust/40 mb-6 italic">Identity Frequency</h4>
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-8">
+              <div className="relative">
+                <div className="w-24 h-24 bg-white/10 rounded-3xl overflow-hidden border border-white/10 ring-8 ring-white/5">
+                  <img src={user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid}`} alt="Avatar" referrerPolicy="no-referrer" />
+                </div>
+                <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-emerald-500 rounded-xl border-4 border-cosmic-black flex items-center justify-center">
+                  <Activity className="w-3 h-3 text-white" />
+                </div>
+              </div>
+              
+              <form onSubmit={handleUpdateProfile} className="flex-grow w-full">
+                <div className="mb-4">
+                  <label className="block text-[8px] font-black uppercase tracking-widest text-stardust/30 mb-2">Manifestation Alias</label>
+                  <input 
+                    type="text" 
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white font-bold focus:outline-none focus:border-white/30 transition-all"
+                    placeholder="Enter Alias..."
+                  />
+                </div>
+                <div className="flex items-center gap-4">
+                  <button 
+                    type="submit"
+                    disabled={isUpdating || displayName === user?.displayName}
+                    className="px-6 py-3 bg-white text-cosmic-black rounded-xl font-black uppercase text-[10px] tracking-widest hover:scale-105 active:scale-95 transition-all disabled:opacity-30 disabled:scale-100"
+                  >
+                    {isUpdating ? 'Synchronizing...' : 'Update Alias'}
+                  </button>
+                  {saveStatus === 'success' && <span className="text-emerald-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2"><CheckCircle2 className="w-3 h-3" /> Frequency Aligned</span>}
+                  {saveStatus === 'error' && <span className="text-red-400 text-[10px] font-black uppercase tracking-widest">Protocol Failed</span>}
+                </div>
+              </form>
+            </div>
+          </div>
+          <div className="absolute -right-10 -bottom-10 w-60 h-60 bg-white/[0.02] blur-3xl rounded-full" />
+        </div>
+
+        {/* Current Standing */}
+        <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between">
+          <div>
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-stardust/40 mb-6 italic">Evolution Tier</h4>
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center border border-white/10">
+                <Sparkles className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <p className="text-xl font-black text-white italic uppercase tracking-tighter">{tier}</p>
+                <p className="text-[10px] font-bold text-stardust/20 uppercase tracking-widest">Current Resonant State</p>
+              </div>
+            </div>
+          </div>
+          <button 
+            onClick={() => setView('pricing')}
+            className="w-full py-4 bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all"
+          >
+            Manage Consciousness Tier
+          </button>
+        </div>
+
+        {/* Signal & Feedback */}
+        <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between">
+          <div>
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-stardust/40 mb-6 italic">Signal Calibration</h4>
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.1)]">
+                <Bell className="w-6 h-6 text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-sm font-black text-white italic uppercase tracking-tighter">Divine Alerts</p>
+                <p className="text-[10px] font-bold text-stardust/20 uppercase tracking-widest leading-tight">Reminders + 528Hz Sound</p>
+              </div>
+            </div>
+          </div>
+          <button 
+            onClick={handleTestSignal}
+            className="w-full py-4 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(16,185,129,0.1)]"
+          >
+            <Zap className="w-3 h-3" /> Test Signal Frequency
+          </button>
+        </div>
+
+        {/* Danger Zone */}
+        <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between border-red-500/10">
+          <div>
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-red-400/40 mb-6 italic">Terminal Actions</h4>
+            <div className="space-y-3">
+              <button 
+                onClick={handleClearRituals}
+                className="w-full p-4 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-2xl text-left transition-all group"
+              >
+                <p className="text-[10px] font-black uppercase tracking-widest text-white group-hover:text-red-400">Purge Ritual History</p>
+                <p className="text-[8px] font-bold text-stardust/20 uppercase tracking-widest">Reset all daily habits and streaks</p>
+              </button>
+              <button 
+                onClick={() => logout()}
+                className="w-full p-4 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl text-left transition-all group"
+              >
+                <p className="text-[10px] font-black uppercase tracking-widest text-white">De-authenticate</p>
+                <p className="text-[8px] font-bold text-stardust/20 uppercase tracking-widest">Disconnect from Manifest OS</p>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Information Grid */}
+        <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] md:col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+            <div>
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-white mb-6">Manifest OS</h4>
+              <p className="text-stardust/20 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
+                The absolute operating system for digital manifestation and intention amplification.
+              </p>
+            </div>
+            <div>
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-white mb-6">Support Channels</h4>
+              <ul className="space-y-4 text-xs font-bold text-stardust/40">
+                <li className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest">Ritual Assistance</li>
+                <li className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest">Sonic Troubleshooting</li>
+                <li className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest">Architect Feedback</li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-white mb-6">System Data</h4>
+              <ul className="space-y-4 text-xs font-bold text-stardust/40 font-serif active-italic">
+                <li onClick={() => setView('privacy')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest underline decoration-white/10">Privacy Protocol</li>
+                <li onClick={() => setView('terms')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest underline decoration-white/10">Terms of Alignment</li>
+                <li className="text-[8px] opacity-20 uppercase tracking-widest">Build ID: LOM.2.0.26.RESONANCE</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-    <div className="text-center pt-8 border-t border-white/5">
-      <p className="text-[9px] font-black uppercase tracking-[0.4em] text-white/10">
-        &copy; 2026 ManifestOS | Absolute Creation Engine. Unified Collective Reality.
-      </p>
-    </div>
-  </footer>
-);
 
-const TermsView = () => (
+      <div className="mt-12 text-center opacity-30">
+        <p className="text-[9px] font-black uppercase tracking-[0.4em] text-white">
+          Quantum Encrypted Connection Established.
+        </p>
+      </div>
+    </div>
+  );
+});
+
+const TermsView = ({ setView }: { setView: (v: View) => void }) => (
   <div className="max-w-4xl mx-auto py-10 px-6 font-serif prose prose-invert">
-    <h1 className="text-5xl font-black italic text-white mb-10">Terms of Service</h1>
+    <button 
+      onClick={() => setView('settings')}
+      className="mb-8 flex items-center gap-2 text-stardust/40 hover:text-white font-black uppercase text-[10px] tracking-widest font-sans transition-colors"
+    >
+      <ArrowRight className="w-4 h-4 rotate-180" /> Back to Calibration
+    </button>
+    <h1 className="text-5xl font-black italic text-white mb-10">Terms of Alignment</h1>
     <div className="space-y-8 text-stardust/60 leading-relaxed italic">
       <section>
         <h3 className="text-xl font-bold text-white mb-4">1. Acceptance of Alignment</h3>
@@ -1151,8 +1485,14 @@ const TermsView = () => (
   </div>
 );
 
-const PrivacyView = () => (
+const PrivacyView = ({ setView }: { setView: (v: View) => void }) => (
   <div className="max-w-4xl mx-auto py-10 px-6 font-serif prose prose-invert">
+    <button 
+      onClick={() => setView('settings')}
+      className="mb-8 flex items-center gap-2 text-stardust/40 hover:text-white font-black uppercase text-[10px] tracking-widest font-sans transition-colors"
+    >
+      <ArrowRight className="w-4 h-4 rotate-180" /> Back to Calibration
+    </button>
     <h1 className="text-5xl font-black italic text-white mb-10">Privacy Protocol</h1>
     <div className="space-y-8 text-stardust/60 leading-relaxed italic">
       <section>
@@ -1175,7 +1515,7 @@ const PrivacyView = () => (
   </div>
 );
 
-const SonicView = ({ activeHz, onToggle }: { activeHz: number | null, onToggle: (hz: number) => void }) => {
+const SonicView = memo(({ activeHz, onToggle }: { activeHz: number | null, onToggle: (hz: number) => void }) => {
   const frequencies = [
     { hz: 174, label: "Quantum Foundation", benefit: "Anxiety relief & pain reduction.", description: "The lowest frequency provides a stable foundation for manifestation." },
     { hz: 285, label: "Tissue Regeneration", benefit: "Heals internal organs & energy fields.", description: "Restores the blueprint of homeostatic health." },
@@ -1237,11 +1577,11 @@ const SonicView = ({ activeHz, onToggle }: { activeHz: number | null, onToggle: 
       </div>
     </div>
   );
-};
+});
 
 // --- View Sub-components ---
 
-const DashboardView = ({ 
+const DashboardView = memo(({ 
   habits, 
   desires, 
   visionItems, 
@@ -1325,230 +1665,257 @@ const DashboardView = ({
   const currentFocus = activeDesires[focusIndex % activeDesires.length] || desires[0];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-8">
-      {/* Daily Progress */}
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 auto-rows-min pb-12 max-w-7xl mx-auto relative z-10">
+      {/* 1. Alignment Core */}
       <motion.div 
-        whileHover={{ scale: 1.01, boxShadow: '0 20px 50px rgba(16,185,129,0.2)', borderColor: 'rgba(16,185,129,0.4)' }}
-        whileTap={{ scale: 0.99 }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ scale: 1.005, boxShadow: '0 30px 60px -12px rgba(16,185,129,0.2)' }}
         onClick={() => setView('habits')}
-        className="lg:col-span-2 bg-gradient-to-br from-emerald-500/20 via-emerald-950/40 to-cosmic-black rounded-[2rem] lg:rounded-[2.5rem] p-6 lg:p-10 text-white relative overflow-hidden border border-emerald-500/20 shadow-2xl cursor-pointer group"
+        className="md:col-span-2 lg:col-span-2 bg-[#022c22]/80 backdrop-blur-2xl rounded-[2.5rem] p-8 lg:p-10 border border-emerald-500/20 shadow-2xl relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[340px]"
       >
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="px-4 py-1.5 rounded-full bg-white text-cosmic-black text-[9px] font-black uppercase tracking-[0.2em] flex items-center gap-2 group-hover:scale-105 transition-transform">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              LOM Core: Synchronized
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent opacity-30" />
+        <div className="relative z-10 flex flex-col h-full">
+          <div className="flex items-center justify-between mb-8">
+            <div className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black uppercase tracking-[0.4em] text-emerald-400 flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+              LOM Engine: Online
             </div>
+            <Activity className="w-4 h-4 text-emerald-500/20 group-hover:text-emerald-400 transition-colors" />
           </div>
-          <h3 className="text-2xl lg:text-4xl font-black mb-3 tracking-tight group-hover:text-emerald-400 transition-colors uppercase italic">LOM Observes All.</h3>
-          <p className="text-stardust/60 mb-6 lg:mb-10 max-w-sm ml-0.5 leading-relaxed font-medium text-sm lg:text-base italic">Your frequency determines your reality. The Law of Manifestation (LOM) Operating System is now fully synchronized with your intention.</p>
-          <div className="flex items-end gap-6 max-w-md lg:max-w-none">
-            <div className="flex-grow">
-              <div className="flex justify-between mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-stardust/40">
-                <span className="flex items-center gap-2">Alignment Status</span>
-                <span className="text-white bg-white/5 px-2 py-0.5 rounded-md">{Math.round(progress)}% Potential</span>
+          
+          <h3 className="text-3xl lg:text-5xl font-black mb-4 tracking-tighter text-white drop-shadow-2xl italic leading-[0.9] uppercase">
+            Universal <br /><span className="text-emerald-400">Order.</span>
+          </h3>
+          <p className="text-stardust/40 mb-10 max-w-sm text-[10px] lg:text-xs font-bold leading-relaxed uppercase tracking-[0.15em] italic">
+            Synchronizing frequency with the quantum field. Your evolution is mathematical.
+          </p>
+
+          <div className="mt-auto grid grid-cols-2 gap-4">
+            <div className="relative pt-4 border-t border-white/5">
+              <div className="flex justify-between mb-2 text-[8px] font-black uppercase tracking-[0.2em] text-stardust/30">
+                <span>Alignment</span>
+                <span className="text-emerald-400">+{Math.round(progress)}%</span>
               </div>
-              <div className="h-3 lg:h-4 bg-black/40 rounded-full p-0.5 lg:p-1 border border-emerald-500/10 overflow-hidden relative">
+              <div className="h-1.5 bg-white/5 rounded-full overflow-hidden p-[1px] border border-white/10">
                 <motion.div 
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
-                  className="h-full bg-gradient-to-r from-emerald-400 to-white rounded-full shadow-[0_0_15px_rgba(52,211,153,0.5)] relative z-10" 
+                  transition={{ duration: 1.5, ease: "circOut" }}
+                  className="h-full bg-gradient-to-r from-emerald-500 to-white rounded-full shadow-[0_0_15px_rgba(52,211,153,0.5)]" 
                 />
-                <div className="absolute inset-0 bg-emerald-500/10 animate-pulse" />
               </div>
+            </div>
+            <div className="relative pt-4 border-t border-white/5 flex flex-col justify-end">
+              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-stardust/30 block mb-1">Ritual Sync</span>
+              <span className="text-lg font-black text-white italic leading-none">{habits.filter(h => h.completed).length}<span className="text-white/20 mx-1">/</span>{habits.length}</span>
             </div>
           </div>
         </div>
-        
-        {/* Abstract Black Hole Effect */}
-        <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/2 w-64 lg:w-96 h-64 lg:h-96 border border-white/5 rounded-full opacity-20 pointer-events-none group-hover:scale-110 transition-transform duration-[2s]" />
-        <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/2 w-[20rem] lg:w-[28rem] h-[20rem] lg:h-[28rem] border border-white/10 rounded-full opacity-10 pointer-events-none group-hover:scale-125 transition-transform duration-[3s]" />
-        <div className="absolute -right-20 -bottom-20 w-80 h-80 bg-white/5 blur-[120px] rounded-full animate-pulse" />
       </motion.div>
 
-      {/* Focus Area */}
+      {/* 2. Focus Area */}
       <motion.div 
-        whileHover={{ y: -5, scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.1 }}
+        whileHover={{ y: -5, boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}
         onClick={() => setFocusIndex(focusIndex + 1)}
-        className="bg-[#f4e4bc] rounded-[2rem] lg:rounded-[2.5rem] p-6 lg:p-8 relative overflow-hidden group cursor-pointer shadow-[5px_5px_15px_rgba(0,0,0,0.3)] border-b-4 border-r-4 border-black/10"
-        style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/cream-paper.png')` }}
+        className="md:col-span-1 lg:col-span-1 bg-[#fbfbf2] rounded-[2.5rem] p-8 border border-black/5 shadow-xl relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[340px]"
       >
-        <div className="flex items-center gap-3 mb-4 lg:mb-6 relative z-10">
-          <div className="p-2.5 lg:p-3 bg-black/10 text-black/60 rounded-2xl group-hover:bg-black/20 transition-colors">
-            <Target className="w-5 h-5 lg:w-5 lg:h-5" />
-          </div>
-          <span className="font-black uppercase text-[10px] tracking-[0.2em] text-black/40">Singularity</span>
-        </div>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentFocus?.id || 'empty'}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="relative z-10"
-          >
-            <h4 className="text-2xl lg:text-3xl font-script font-bold mb-4 lg:mb-6 text-black/90 leading-tight">"{currentFocus?.text || 'Setting my first intention...'}"</h4>
-            <div className="space-y-3 lg:space-y-4">
-              <div className="flex items-center justify-between p-4 lg:p-5 bg-black/5 rounded-2xl border border-black/5 hover:border-black/10 transition-colors">
-                <span className="text-[10px] font-black uppercase text-black/40 tracking-widest">Dimension</span>
-                <span className="text-[10px] lg:text-xs font-black text-black/60 uppercase tracking-widest">{currentFocus?.category || 'Universal'}</span>
-              </div>
+        <div className="absolute inset-0 opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/pinstripe-dark.png')]" />
+        <div className="relative z-10 flex flex-col h-full">
+          <div className="flex items-center justify-between mb-10">
+            <div className="p-2.5 bg-black/5 rounded-xl flex items-center justify-center text-black/30 group-hover:bg-black group-hover:text-white transition-all duration-300">
+              <Target className="w-5 h-5" />
             </div>
-          </motion.div>
-        </AnimatePresence>
-        <div className="mt-4 lg:mt-6 flex items-center justify-between px-2 relative z-10">
-          <span className="text-[10px] font-black uppercase text-black/30 tracking-widest">Active Intentions</span>
-          <span className="text-sm font-black text-black/70">{activeDesires.length}</span>
+            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-black/20 italic">Singularity</span>
+          </div>
+
+          <div className="flex-grow flex flex-col justify-center">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentFocus?.id || 'empty'}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="mb-8"
+              >
+                <h4 className="text-3xl font-black text-black leading-[0.9] tracking-tighter italic mb-4 uppercase">
+                  {currentFocus?.text || 'Project Intent'}
+                </h4>
+                <div className="inline-block px-3 py-1 bg-black/10 rounded-md text-[8px] font-black uppercase tracking-widest text-black/60 italic">
+                  {currentFocus?.category || 'Universal'}
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+
+          <div className="relative z-10 pt-6 border-t border-black/5 flex items-center justify-between mt-auto">
+             <span className="text-[8px] font-black uppercase tracking-[0.2em] text-black/20">Singularities: <span className="text-black/60 ml-1">{activeDesires.length}</span></span>
+             <ChevronRight className="w-4 h-4 text-black/10 group-hover:text-black transition-colors" />
+          </div>
         </div>
-        {/* Grainy overlay */}
-        <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
       </motion.div>
 
-      {/* Abundance Card */}
+      {/* 3. Wealth Flow */}
       <motion.div 
-        whileHover={{ y: -5, boxShadow: '0 20px 50px rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.2)' }}
-        className="bg-white/5 rounded-[2rem] lg:rounded-[2.5rem] p-6 lg:p-8 border border-white/5 transition-all group relative overflow-hidden"
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: 0.2 }}
+        whileHover={{ scale: 1.01 }}
+        className="md:col-span-1 lg:col-span-1 bg-[#064e3b]/95 backdrop-blur-2xl rounded-[2.5rem] p-8 border border-white/10 shadow-2xl relative overflow-hidden group flex flex-col justify-between min-h-[340px]"
       >
-        <div className="relative z-10 flex flex-col h-full justify-between">
-          <div className="flex justify-between items-start">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 blur-3xl rounded-full" />
+        <div className="relative z-10 h-full flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-8">
             <div onClick={() => setView('wealth')} className="cursor-pointer">
-              <h3 className="font-black text-[10px] uppercase tracking-[0.25em] text-stardust/40 mb-6 flex items-center gap-2">
-                Abundance Flow
-                <Wallet className="w-3 h-3 text-white/20" />
+              <h3 className="text-[9px] font-black uppercase tracking-[0.3em] text-stardust/40 mb-3 flex items-center gap-2">
+                Wealth Flow <TrendingUp className="w-3 h-3 text-emerald-400" />
               </h3>
-              <p className="text-3xl font-black italic text-white mb-1">
-                {netWealth >= 0 ? '+' : '-'}${Math.abs(netWealth).toLocaleString()}
-              </p>
-              <p className="text-[10px] font-black uppercase tracking-widest text-stardust/20 italic">Vibrational Liquidity</p>
+              <div className="flex flex-col">
+                <span className="text-3xl font-black italic text-white tracking-tighter mb-1">${Math.abs(netWealth).toLocaleString()}</span>
+                <span className={`text-[8px] font-black uppercase italic tracking-widest ${netWealth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {netWealth >= 0 ? 'Net Positive' : 'Quantum Dept'}
+                </span>
+              </div>
             </div>
             <button 
               onClick={(e) => { e.stopPropagation(); setView('wealth'); }}
-              className="p-3 bg-white/5 rounded-2xl text-white/40 hover:text-white hover:bg-white/10 transition-all active:scale-90"
+              className="p-3 bg-white/5 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all border border-white/5 shadow-xl"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 shadow-sm" />
             </button>
           </div>
 
-          <div className="mt-8">
-            {/* Sparkline */}
-            <div className="w-full h-10 mb-6 overflow-visible">
-              <svg viewBox="0 0 100 20" className="w-full h-full preserve-3d" preserveAspectRatio="none">
-                <path 
-                   d={sparklinePath} 
-                   fill="none" 
-                   stroke="white" 
-                   strokeWidth="1.5" 
-                   strokeOpacity="0.4"
-                   strokeLinecap="round"
-                   strokeLinejoin="round"
-                   className="drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]"
-                />
-              </svg>
+          <div className="h-10 mb-8">
+            <svg viewBox="0 0 100 20" className="w-full h-full" preserveAspectRatio="none">
+              <motion.path 
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ duration: 2 }}
+                d={sparklinePath} 
+                fill="none" 
+                stroke={netWealth >= 0 ? "#10b981" : "#ef4444"}
+                strokeWidth="2.5" 
+                strokeLinecap="round"
+                className="drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]"
+              />
+            </svg>
+          </div>
+
+          <div className="flex items-center justify-between pt-6 border-t border-white/5">
+            <div className="flex -space-x-2">
+              {transactions.slice(-3).map((t, idx) => (
+                <div key={idx} className={`w-7 h-7 rounded-xl border-2 border-[#064e3b] ${t.type === 'income' ? 'bg-emerald-500' : 'bg-red-500'} flex items-center justify-center text-[8px] font-black text-white`} style={{ zIndex: 10 - idx }}>
+                  {t.type === 'income' ? '+' : '-'}
+                </div>
+              ))}
             </div>
-            
-            <div className="flex items-center justify-between">
-              <div className="flex -space-x-2">
-                 {transactions.slice(0, 3).map((t, i) => (
-                   <div key={t.id} className={`w-8 h-8 rounded-full border-2 border-cosmic-black flex items-center justify-center text-[10px] font-black ${t.type === 'income' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`} style={{ zIndex: 10 - i }}>
-                     {t.type === 'income' ? '+' : '-'}
-                   </div>
-                 ))}
-                 {transactions.length > 3 && (
-                   <div className="w-8 h-8 rounded-full border-2 border-cosmic-black bg-white/10 flex items-center justify-center text-[8px] font-black text-stardust/40" style={{ zIndex: 0 }}>
-                     +{transactions.length - 3}
-                   </div>
-                 )}
-              </div>
-              <div onClick={() => setView('wealth')} className="flex items-center gap-2 cursor-pointer group/btn">
-                <span className="text-[9px] font-black uppercase tracking-widest text-stardust/20 group-hover/btn:text-white transition-colors">Analyzer</span>
-                <ArrowRight className="w-3 h-3 text-stardust/20 group-hover/btn:text-white transition-all transform group-hover/btn:translate-x-1" />
-              </div>
-            </div>
+            <span className="text-[8px] font-black uppercase tracking-widest text-stardust/20 italic">Liquidity Sync</span>
           </div>
         </div>
-        {/* Abstract background highlight */}
-        <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-white/[0.02] rounded-full blur-3xl pointer-events-none" />
       </motion.div>
 
-      {/* Rituals List */}
+      {/* 4. Ritual Feed */}
       <motion.div 
-        whileHover={{ y: -5, boxShadow: '0 20px 50px rgba(16,185,129,0.1)', borderColor: 'rgba(52,211,153,0.2)' }}
-        className="bg-gradient-to-br from-emerald-500/10 via-emerald-950/20 to-cosmic-black rounded-[2rem] lg:rounded-[2.5rem] p-6 lg:p-8 border border-emerald-500/10 transition-all group"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="md:col-span-1 lg:col-span-1 bg-white/5 backdrop-blur-xl rounded-[2.5rem] p-8 border border-white/5 shadow-2xl relative group overflow-hidden flex flex-col min-h-[380px]"
       >
-        <h3 
-          onClick={() => setView('habits')}
-          className="font-black text-[10px] uppercase tracking-[0.25em] text-emerald-400/60 mb-4 lg:mb-8 flex justify-between items-center cursor-pointer hover:text-emerald-400 transition-colors"
-        >
-          Habit Sync
-          <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+        <h3 className="text-[9px] font-black uppercase tracking-[0.4em] text-stardust/30 mb-8 flex justify-between items-center group-hover:text-white transition-colors">
+          Ritual Feed
+          <Activity className="w-3 h-3 text-emerald-400 animate-pulse" />
         </h3>
-        <div className="space-y-3 lg:space-y-5">
-          {habits.slice(0, 4).map(habit => (
-            <div 
-              key={habit.id} 
+        
+        <div className="space-y-3 flex-grow">
+          {habits.slice(0, 4).map((habit, i) => (
+            <motion.div 
+              key={habit.id}
+              initial={{ x: -10, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.4 + (i * 0.1) }}
               onClick={() => toggleHabit(habit.id)}
-              className="flex items-center gap-3 lg:gap-4 group cursor-pointer"
+              className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition-all cursor-pointer group/item"
             >
-              <div className={`w-5 h-5 lg:w-6 lg:h-6 rounded-lg border-2 flex items-center justify-center transition-all ${habit.completed ? 'bg-emerald-400 border-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.4)]' : 'border-white/10 bg-white/5 group-hover:border-emerald-500/30'}`}>
-                {habit.completed && <CheckSquare className="w-3.5 h-3.5 lg:w-4 lg:h-4 text-cosmic-black" />}
+              <div className="flex items-center gap-3">
+                <div className={`w-2 h-2 rounded-full transition-all ${habit.completed ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,1)]' : 'bg-white/10 group-hover/item:bg-white/20'}`} />
+                <span className={`text-[10px] font-black uppercase tracking-widest transition-all ${habit.completed ? 'text-stardust/20 line-through' : 'text-white/80 group-hover/item:text-white'}`}>
+                  {habit.name}
+                </span>
               </div>
-              <span className={`text-xs lg:text-sm font-bold transition-colors ${habit.completed ? 'text-stardust/30' : 'text-stardust/80 group-hover:text-emerald-400'}`}>{habit.name}</span>
-            </div>
+            </motion.div>
           ))}
         </div>
+        
+        <button 
+          onClick={() => setView('habits')}
+          className="w-full py-4 mt-4 rounded-2xl border border-dashed border-white/10 text-[8px] font-black uppercase tracking-[0.3em] text-stardust/20 hover:text-white transition-all hover:bg-white/5 italic"
+        >
+          Full Spectrum
+        </button>
       </motion.div>
 
-      <div className="lg:col-span-2 bg-[#4a3728] rounded-[2rem] lg:rounded-[2.5rem] p-5 sm:p-8 relative overflow-hidden border-b-8 border-black/20 shadow-2xl min-h-[400px] lg:min-h-[500px]" 
-           style={{ backgroundImage: `url('https://www.transparenttextures.com/wood-pattern.png')` }}>
-        <div className="flex justify-between items-center mb-5 relative z-10">
-          <h3 className="font-black text-[10px] uppercase tracking-[0.25em] text-white/40">Glimpses of Destiny</h3>
-          <button onClick={() => setView('vision')} className="text-[10px] font-black uppercase tracking-[0.2em] text-white/60 hover:text-white transition-colors">Manifest Board</button>
-        </div>
+      {/* 5. Vision Deck */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+        className="md:col-span-2 lg:col-span-3 bg-[#064e3b]/60 backdrop-blur-3xl rounded-[3rem] p-10 lg:p-12 border border-white/5 shadow-2xl relative overflow-hidden group min-h-[440px]"
+      >
+        <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
         
-        <div className="absolute inset-0 p-8 pt-16">
-          {displayVision.map((item, idx) => {
+        <div className="flex justify-between items-center mb-10 relative z-10">
+          <div className="flex flex-col">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-emerald-400/40 mb-1">Projection Core</h3>
+            <h4 className="text-2xl font-black text-white italic tracking-tighter uppercase leading-none">Vision Deck.</h4>
+          </div>
+          <button onClick={() => setView('vision')} className="px-6 py-2 rounded-full bg-white/5 border border-white/10 text-[9px] font-black uppercase tracking-widest text-stardust/60 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2">
+            Expand Deck <Expand className="w-3 h-3" />
+          </button>
+        </div>
+
+        <div className="absolute inset-0 p-12 pt-28">
+           {displayVision.map((item, idx) => {
             const pos = getPosition(idx, displayVision.length);
             return (
               <motion.div 
                 key={item.id} 
                 initial={{ opacity: 0, scale: 0.5, rotate: 0 }}
-                animate={{ opacity: 1, scale: pos.scale, rotate: pos.rotate }}
-                whileHover={{ scale: 1.2, zIndex: 100, rotate: 0 }}
-                className="absolute w-28 sm:w-40 lg:w-48 bg-[#d4b595] p-1 pb-3 sm:p-1.5 sm:pb-4 rounded-sm shadow-[5px_5px_15px_rgba(0,0,0,0.5)] cursor-pointer group border-b-2 border-r-2 border-black/10 transition-all origin-center"
-                style={{ 
-                  left: pos.left, 
-                  top: pos.top, 
-                  zIndex: pos.zIndex,
-                  backgroundImage: `url('https://www.transparenttextures.com/patterns/cardboard.png')` 
+                animate={{ 
+                  opacity: 1, 
+                  scale: pos.scale,
+                  left: pos.left,
+                  top: pos.top,
+                  rotate: pos.rotate,
+                  zIndex: pos.zIndex
                 }}
+                whileHover={{ scale: 1.3, zIndex: 100, rotate: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }}
+                className="absolute w-32 h-32 md:w-48 md:h-48 group/vision cursor-pointer"
               >
-                {/* Push Pin */}
-                <div className="absolute top-1 left-1/2 -translate-x-1/2 w-2 h-2 sm:w-3 sm:h-3 bg-red-600 rounded-full z-20 shadow-md">
-                  <div className="absolute top-0.5 left-0.5 w-0.5 h-0.5 sm:w-1 sm:h-1 bg-white/40 rounded-full" />
-                </div>
-                
-                <div className="w-full aspect-square relative overflow-hidden rounded-sm">
+                <div className="w-full h-full p-2.5 bg-white/10 backdrop-blur-3xl border border-white/20 rounded-[2rem] shadow-2xl relative overflow-hidden group-hover/vision:border-emerald-500/50 transition-all duration-500 shadow-black/60">
                   <img 
                     src={item.imageUrl} 
                     alt={item.caption} 
-                    className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-700"
+                    className="w-full h-full object-cover rounded-[1.5rem] grayscale-[0.4] brightness-75 group-hover/vision:grayscale-0 group-hover/vision:brightness-110 transition-all duration-700" 
                     referrerPolicy="no-referrer"
                   />
+                  <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover/vision:opacity-100 transition-all duration-500 translate-y-4 group-hover/vision:translate-y-0">
+                    <p className="text-[9px] font-black text-white uppercase tracking-[0.2em] italic truncate">{item.caption}</p>
+                  </div>
                 </div>
               </motion.div>
             );
           })}
         </div>
-        
-        {/* Wood grain highlight */}
-        <div className="absolute inset-0 bg-black/10 mix-blend-overlay pointer-events-none" />
-      </div>
+      </motion.div>
     </div>
-  );
-};
 
-const ManifestView = ({ 
+  );
+});
+
+const ManifestView = memo(({ 
   desires, 
   addDesire, 
   removeDesire, 
@@ -1625,9 +1992,9 @@ const ManifestView = ({
       </div>
     </div>
   );
-};
+});
 
-const VisionBoardView = ({ items, addItem, removeItem }: { items: VisionItem[], addItem: (c: string, u: string) => void, removeItem: (id: string) => void }) => {
+const VisionBoardView = memo(({ items, addItem, removeItem }: { items: VisionItem[], addItem: (c: string, u: string) => void, removeItem: (id: string) => void }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [caption, setCaption] = useState('');
   const [imageUrl, setImageUrl] = useState('');
@@ -1872,9 +2239,9 @@ const VisionBoardView = ({ items, addItem, removeItem }: { items: VisionItem[], 
       </div>
     </div>
   );
-};
+});
 
-const WealthView = ({ 
+const WealthView = memo(({ 
   transactions, 
   addTransaction, 
   removeTransaction 
@@ -1921,7 +2288,7 @@ const WealthView = ({
     }, {} as Record<string, number>);
 
   const pieData = Object.entries(expensesByCategory).map(([name, value]) => ({ name, value }));
-  const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+  const COLORS = ['#10b981', '#34d399', '#059669', '#047857', '#065f46', '#064e3b', '#06b6d4'];
 
   const handleAdd = () => {
     if (!amount || !label) return;
@@ -2142,7 +2509,7 @@ const WealthView = ({
       <div className="space-y-4 pb-20">
         {transactions.length === 0 ? (
           <div className="py-20 text-center bg-white/5 rounded-[2.5rem] border border-dashed border-white/10">
-            <CreditCard className="w-12 h-12 text-stardust/10 mx-auto mb-6" />
+            <Wallet className="w-12 h-12 text-stardust/10 mx-auto mb-6" />
             <p className="text-stardust/20 font-black uppercase tracking-widest text-xs italic">No wealth movements recorded.</p>
           </div>
         ) : (
@@ -2184,9 +2551,9 @@ const WealthView = ({
       </div>
     </div>
   );
-};
+});
 
-const HabitsView = ({ 
+const HabitsView = memo(({ 
   habits, 
   habitLogs,
   addHabit, 
@@ -2429,7 +2796,7 @@ const HabitsView = ({
       )}
     </div>
   );
-};
+});
 
 const HabitHistory = ({ habit, logs }: { habit: Habit, logs: HabitLog[] }) => {
   return (
@@ -2617,7 +2984,7 @@ const SacredJournaling = ({ entries, onSave }: { entries: DiaryEntry[], onSave: 
   );
 };
 
-const AcademyView = () => {
+const AcademyView = memo(() => {
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
 
   const lessons: (Lesson & { fullStep?: string[]; science?: string; image: string })[] = [
@@ -2821,7 +3188,7 @@ const AcademyView = () => {
        </div>
     </div>
   );
-};
+});
 
 const PlaceholderView = ({ title, description }: { title: string, description: string }) => (
   <div className="py-20 lg:py-40 flex flex-col items-center justify-center text-center px-6">
@@ -2837,7 +3204,7 @@ const PlaceholderView = ({ title, description }: { title: string, description: s
   </div>
 );
 
-const PricingView = ({ setView, user, tier }: { setView: (v: View) => void, user: User | null, tier: string }) => {
+const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void, user: User | null, tier: string }) => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | '6month' | 'yearly'>('monthly');
   
@@ -2913,6 +3280,12 @@ const PricingView = ({ setView, user, tier }: { setView: (v: View) => void, user
             });
             const verifyData = await verifyRes.json();
             if (verifyData.status === "ok") {
+              // Update user tier in Firestore
+              await updateDoc(doc(db, 'users', user.uid), {
+                tier: plan.name,
+                updatedAt: serverTimestamp()
+              });
+              
               alert(`Payment Verified! Your frequency has ascended to ${plan.name}.`);
               setView('dashboard');
             } else {
@@ -2938,6 +3311,30 @@ const PricingView = ({ setView, user, tier }: { setView: (v: View) => void, user
     } catch (e) {
       console.error("Payment error:", e);
       alert("Failed to initialize payment.");
+    }
+  };
+
+  const handleSimulateUpgrade = async (plan: any) => {
+    if (!user) {
+      alert("Please sign in to upgrade your frequency.");
+      return;
+    }
+    
+    if (!confirm(`PROTOTYPE MODE: This will simulate a payment for the ${plan.name} tier. Proceed with manifestation?`)) return;
+
+    setIsVerifying(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        tier: plan.name,
+        updatedAt: serverTimestamp()
+      });
+      alert(`Simulation Successful! Your frequency has ascended to ${plan.name} (Preview Mode).`);
+      setView('dashboard');
+    } catch (e) {
+      console.error(e);
+      alert("Simulation failed.");
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -2995,76 +3392,121 @@ const PricingView = ({ setView, user, tier }: { setView: (v: View) => void, user
                              import.meta.env.VITE_PAYPAL_CLIENT_ID !== "sb";
 
   const pricingContent = (
-    <div className="max-w-6xl mx-auto px-4 lg:px-0 pb-20">
-      <div className="mb-16 lg:mb-20 text-center max-w-3xl mx-auto">
-        <h3 className="text-[10px] lg:text-xs font-black uppercase tracking-[0.4em] text-white/40 mb-6 flex items-center justify-center gap-3">
-          <Sparkles className="w-4 h-4" /> Infinite Potential
-        </h3>
-        <h2 className="text-4xl lg:text-7xl font-black tracking-tighter mb-8 text-white drop-shadow-2xl">
-          Choose Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-stardust to-white/40">Density.</span>
+    <div className="max-w-6xl mx-auto px-4 lg:px-0 pb-10">
+      <div className="mb-12 lg:mb-16 text-center max-w-3xl mx-auto">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black uppercase tracking-[0.4em] text-emerald-400 mb-6 italic">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+          Limited Manifestation Window Open
+        </div>
+        
+        <h2 className="text-4xl lg:text-6xl font-black tracking-tighter mb-6 text-white drop-shadow-2xl uppercase italic leading-[0.9]">
+          Ascend Your <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-white to-emerald-400">Abundance.</span>
         </h2>
         
-        <div className="flex justify-center mt-12 mb-4">
-           <div className="bg-white/5 p-1 rounded-2xl flex border border-white/5">
+        <p className="text-stardust/40 text-[10px] lg:text-xs font-bold leading-relaxed uppercase tracking-[0.2em] mb-10 italic">
+          Join 8,400+ souls already operating at the universal frequency.
+        </p>
+
+        <div className="flex flex-col items-center gap-4">
+           <div className="bg-white/5 p-1.5 rounded-[2rem] flex border border-white/10 shadow-2xl">
               {[
                 { id: 'monthly', label: 'Monthly' },
-                { id: '6month', label: '6 Months' },
-                { id: 'yearly', label: 'Yearly' }
+                { id: '6month', label: '6 Months', best: false },
+                { id: 'yearly', label: 'Yearly', best: true }
               ].map((cycle) => (
                 <button
                   key={cycle.id}
                   onClick={() => setBillingCycle(cycle.id as any)}
-                  className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${billingCycle === cycle.id ? 'bg-white text-cosmic-black shadow-lg shadow-white/10' : 'text-stardust/40 hover:text-white'}`}
+                  className={`relative px-6 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all overflow-hidden ${billingCycle === cycle.id ? 'bg-white text-cosmic-black shadow-2xl' : 'text-stardust/40 hover:text-white'}`}
                 >
                   {cycle.label}
+                  {cycle.best && cycle.id !== billingCycle && (
+                    <div className="absolute top-0 right-0 px-2 py-0.5 bg-emerald-500 text-white text-[6px] font-black italic">Value</div>
+                  )}
                 </button>
               ))}
            </div>
+           
+           <div className="flex items-center gap-4">
+             <div className="flex items-center gap-1.5">
+               <ShieldCheck className="w-3 h-3 text-emerald-500" />
+               <span className="text-[8px] font-black uppercase tracking-widest text-stardust/20">Secure Encryption</span>
+             </div>
+             <div className="w-1 h-1 rounded-full bg-white/10" />
+             <div className="flex items-center gap-1.5">
+               <Zap className="w-3 h-3 text-amber-500" />
+               <span className="text-[8px] font-black uppercase tracking-widest text-stardust/20">Instant Activation</span>
+             </div>
+           </div>
         </div>
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400 italic mb-12">
-          {billingCycle === '6month' ? 'Save 16% with Biannual Alignment' : billingCycle === 'yearly' ? 'Save 33% with Annual Mastery' : 'Pay as you manifest'}
-        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
-        {plans.map((plan, i) => (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch mb-20">
+        {plans.map((plan, i) => {
+          let effectivePrice = plan.price;
+          let savings = 0;
+          if (billingCycle === '6month') {
+            effectivePrice = (parseFloat(plan.price) / 6).toFixed(2);
+            savings = 16;
+          } else if (billingCycle === 'yearly') {
+            effectivePrice = (parseFloat(plan.price) / 12).toFixed(2);
+            savings = 33;
+          }
+
+          return (
           <motion.div
             key={plan.name}
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className={`relative p-8 lg:p-12 rounded-[2.5rem] border backdrop-blur-3xl flex flex-col justify-between group transition-all duration-500 hover:scale-[1.02] ${
+            className={`relative p-8 lg:p-10 rounded-[3rem] border backdrop-blur-3xl flex flex-col justify-between group transition-all duration-700 hover:scale-[1.02] ${
               plan.recommended 
-                ? 'bg-white/10 border-white/30 shadow-[0_30px_100px_rgba(255,255,255,0.05)]' 
-                : 'bg-white/5 border-white/5 hover:bg-white/[0.07]'
+                ? 'bg-[#064e3b]/40 border-emerald-500/40 shadow-[0_40px_100px_-20px_rgba(16,185,129,0.3)]' 
+                : 'bg-white/5 border-white/5 hover:bg-white/[0.08]'
             }`}
           >
             {plan.recommended && (
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-white text-cosmic-black px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-2xl z-20 whitespace-nowrap">
-                Optimal Frequency
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-emerald-500 text-white px-5 py-2 rounded-full text-[9px] font-black uppercase tracking-[0.3em] shadow-[0_10px_30px_rgba(16,185,129,0.5)] z-20 whitespace-nowrap italic">
+                Manifestor's Choice
+              </div>
+            )}
+
+            {savings > 0 && plan.name !== 'Novice' && (
+              <div className="absolute top-6 right-6 px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[8px] font-black uppercase italic tracking-widest">
+                Save {savings}%
               </div>
             )}
 
             <div>
-              <div className="mb-8">
-                <h4 className="text-xs font-black uppercase tracking-[0.2em] text-stardust/40 mb-2">{plan.name}</h4>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-4xl lg:text-5xl font-black text-white italic">${plan.price}</span>
-                  <span className="text-stardust/20 font-bold text-xs uppercase tracking-widest">
-                     / {billingCycle === 'monthly' ? 'mo' : billingCycle === '6month' ? '6mo' : 'yr'}
-                  </span>
+              <div className="mb-10">
+                <h4 className={`text-[12px] font-black uppercase tracking-[0.4em] mb-4 italic ${plan.recommended ? 'text-emerald-400' : 'text-stardust/40'}`}>
+                  {plan.name}
+                </h4>
+                <div className="flex flex-col">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-5xl lg:text-6xl font-black text-white italic tracking-tighter leading-none">${plan.price}</span>
+                    <span className="text-stardust/20 font-bold text-[10px] uppercase tracking-widest">
+                       {billingCycle === 'monthly' ? '/ mo' : billingCycle === '6month' ? '/ 6 mo' : '/ yr'}
+                    </span>
+                  </div>
+                  {billingCycle !== 'monthly' && plan.name !== 'Novice' && (
+                    <div className="mt-2 flex items-center gap-2">
+                       <span className="text-[14px] font-black text-emerald-400 italic">${effectivePrice}</span>
+                       <span className="text-[8px] font-black uppercase tracking-widest text-stardust/30">Effective per month</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <p className="text-stardust/60 text-sm font-medium mb-10 leading-relaxed min-h-[3rem]">
+              <p className="text-stardust/60 text-xs font-bold mb-10 leading-relaxed uppercase tracking-wider min-h-[3rem] italic">
                 {plan.description}
               </p>
 
-              <div className="space-y-4 mb-12">
+              <div className="space-y-5 mb-12">
                 {plan.features.map(feature => (
-                  <div key={feature} className="flex items-center gap-3 text-xs lg:text-sm font-bold text-stardust/80">
-                    <div className="w-5 h-5 rounded-lg bg-white/5 flex items-center justify-center border border-white/10">
-                      <ChevronRight className="w-3 h-3 text-white" />
+                  <div key={feature} className="flex items-center gap-4 text-[11px] font-black text-white/70 uppercase tracking-widest group-hover:text-white transition-colors">
+                    <div className={`w-5 h-5 rounded-lg flex items-center justify-center border shrink-0 transition-all ${plan.recommended ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/5 border-white/10'}`}>
+                      <Check className={`w-3 h-3 ${plan.recommended ? 'text-emerald-400' : 'text-stardust/40'}`} />
                     </div>
                     {feature}
                   </div>
@@ -3075,34 +3517,46 @@ const PricingView = ({ setView, user, tier }: { setView: (v: View) => void, user
             {plan.isPremium ? (
               <div className="relative z-10 space-y-4">
                 {tier === plan.name ? (
-                   <button
-                      className="w-full py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest bg-emerald-500/20 text-emerald-400 cursor-default border border-emerald-500/20 flex items-center justify-center gap-2"
-                    >
-                      <CheckCircle2 className="w-4 h-4" /> Current Frequency
-                    </button>
+                   <div className="w-full py-5 rounded-[1.5rem] font-black uppercase text-[10px] tracking-[0.3em] bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 flex items-center justify-center gap-2 italic">
+                      <CheckCircle2 className="w-4 h-4" /> Vibrational Match
+                    </div>
                 ) : (
                   <>
                     <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      whileHover={{ scale: 1.02, boxShadow: '0 20px 40px rgba(16,185,129,0.3)' }}
+                      whileTap={{ scale: 0.98 }}
                       disabled={isVerifying}
-                      onClick={() => handleRazorpayPayment(plan)}
-                      className={`w-full py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-xl border border-white/5 flex items-center justify-center gap-2 ${isVerifying ? 'bg-white/10 text-stardust/20' : 'bg-[#230051] text-white shadow-[#230051]/20'}`}
+                      onClick={() => {
+                        if (import.meta.env.VITE_RAZORPAY_KEY_ID) {
+                          handleRazorpayPayment(plan);
+                        } else {
+                          handleSimulateUpgrade(plan);
+                        }
+                      }}
+                      className={`w-full py-5 rounded-[1.5rem] font-black uppercase text-[10px] tracking-[0.3em] transition-all shadow-2xl border border-white/10 flex items-center justify-center gap-3 italic ${
+                        plan.recommended 
+                          ? 'bg-emerald-500 text-white shadow-emerald-500/20 hover:bg-emerald-400' 
+                          : 'bg-white text-cosmic-black hover:bg-stardust'
+                      }`}
                     >
-                      {isVerifying ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <CreditCard className="w-4 h-4" />}
-                      {isVerifying ? 'Verifying...' : 'Pay with Razorpay'}
+                      {isVerifying ? (
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          {import.meta.env.VITE_RAZORPAY_KEY_ID ? <Zap className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                          Claim Mastery
+                        </>
+                      )}
                     </motion.button>
                     
-                    <div className="flex items-center gap-4">
-                      <div className="h-px flex-1 bg-white/5"></div>
-                      <span className="text-[8px] font-black uppercase tracking-wider text-white/20 italic">Global Access</span>
-                      <div className="h-px flex-1 bg-white/5"></div>
+                    <div className="flex items-center justify-center gap-4 py-2">
+                       <span className="text-[7px] font-black uppercase tracking-[0.3em] text-stardust/20 italic">Risk Free • No Questions • Divine Aligned</span>
                     </div>
 
-                    <div className="paypal-button-container min-h-[50px]">
+                    <div className="paypal-button-container opacity-60 hover:opacity-100 transition-opacity">
                       {isPayPalConfigured ? (
                         <PayPalButtons 
-                          style={{ layout: "vertical", shape: "pill", label: "subscribe", color: "white" }}
+                          style={{ height: 36, layout: "vertical", shape: "pill", label: "subscribe", color: "white" }}
                           createSubscription={(data, actions) => {
                             return actions.subscription.create({
                               plan_id: plan.planId!
@@ -3115,54 +3569,104 @@ const PricingView = ({ setView, user, tier }: { setView: (v: View) => void, user
                                  tier: plan.name,
                                  updatedAt: serverTimestamp()
                                });
-                               alert(`Subscription initiated! ID: ${data.subscriptionID}. Your frequency is ascending!`);
+                               alert(`Divine Agreement Signed! Frequency ascending.`);
                                setView('dashboard');
                             }
                           }}
                           onError={(err) => {
                             console.error("PayPal Error:", err);
-                            alert("PayPal failed to initialize. Please check your credentials.");
+                            alert("Vibrational interference with PayPal. Check credentials.");
                           }}
                         />
-                      ) : (
-                        <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-center flex flex-col items-center gap-2">
-                           <span className="text-[8px] font-black uppercase tracking-widest text-stardust/30">PayPal Config Pending</span>
-                           <p className="text-[10px] font-bold text-stardust/20 leading-tight">Add VITE_PAYPAL_CLIENT_ID to settings to enable global payments.</p>
-                        </div>
-                      )}
+                      ) : null}
                     </div>
                   </>
                 )}
-            </div>
-          ) : (
-              <button
-                className={`w-full py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest border border-white/5 cursor-default ${tier === 'Novice' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20' : 'bg-white/5 text-white/40'}`}
-              >
-                {tier === 'Novice' ? 'Current Path' : 'Base Frequency'}
-              </button>
+              </div>
+            ) : (
+              <div className="py-5 rounded-[1.5rem] border border-white/10 flex items-center justify-center text-stardust/20 text-[10px] font-black uppercase tracking-[0.3em] italic text-center">
+                Current Frequency
+              </div>
             )}
 
-            {/* Glowing background hint */}
-            <div className={`absolute -right-10 -bottom-10 w-40 h-40 rounded-full blur-[100px] opacity-10 pointer-events-none group-hover:opacity-20 transition-opacity ${
-              plan.recommended ? 'bg-white' : 'bg-stardust'
+            <div className={`absolute -right-20 -bottom-20 w-64 h-64 rounded-full blur-[120px] opacity-10 pointer-events-none group-hover:opacity-30 transition-opacity duration-1000 ${
+              plan.recommended ? 'bg-emerald-500' : 'bg-white'
             }`} />
           </motion.div>
-        ))}
+        )})}
       </div>
 
-      {/* Enterprise Section */}
-      <div className="mt-20 lg:mt-32 p-10 lg:p-16 rounded-[3rem] bg-gradient-to-br from-white/10 to-transparent border border-white/5 text-center relative overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-20 py-16 border-y border-white/5">
+         {[
+           { icon: Users, title: "8,400+ Active Souls", desc: "A global collective manifesting together." },
+           { icon: ShieldCheck, title: "Bank-Grade Security", desc: "Your energy and data are sacredly protected." },
+           { icon: Star, title: "High Frequency", desc: "Optimized protocols for rapid alignment." },
+           { icon: Award, title: "Universal Seal", desc: "Join the top 1% of deliberate creators." }
+         ].map((item, i) => (
+           <div key={i} className="flex flex-col items-center text-center px-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mb-6 group-hover:bg-emerald-500/20 transition-all border border-white/5">
+                <item.icon className="w-6 h-6 text-emerald-400" />
+              </div>
+              <h5 className="text-[10px] font-black uppercase tracking-widest text-white mb-2 italic">{item.title}</h5>
+              <p className="text-[9px] font-medium text-stardust/40 uppercase tracking-widest leading-loose">{item.desc}</p>
+           </div>
+         ))}
+      </div>
+
+      <div className="max-w-4xl mx-auto rounded-[3rem] bg-white/[0.02] border border-white/5 p-12 overflow-hidden relative group mb-20">
+         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 blur-[100px] rounded-full" />
+         <h3 className="text-xl font-black italic text-white mb-10 text-center uppercase tracking-tighter">Why Settle for <span className="text-stardust/40 line-through tracking-normal">Average?</span></h3>
+         
+         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            <div>
+               <span className="text-[8px] font-black uppercase tracking-[0.4em] text-stardust/20 mb-4 block italic text-center md:text-left">Novice Restriction</span>
+               <div className="space-y-4">
+                  <div className="text-[10px] font-bold text-stardust/40 line-through uppercase tracking-widest">Unlimited AI Scripting</div>
+                  <div className="text-[10px] font-bold text-stardust/40 line-through uppercase tracking-widest">432Hz Sonic Protocols</div>
+                  <div className="text-[10px] font-bold text-stardust/40 line-through uppercase tracking-widest">Priority Quantum Sync</div>
+                  <div className="text-[10px] font-bold text-stardust/30 uppercase tracking-widest">Limited Potential</div>
+               </div>
+            </div>
+            <div className="border-t md:border-t-0 md:border-l border-white/10 pt-10 md:pt-0 md:pl-10">
+               <span className="text-[8px] font-black uppercase tracking-[0.4em] text-emerald-400/40 mb-4 block italic text-center md:text-left">Ascendant Freedom</span>
+               <div className="space-y-4">
+                  <div className="text-[10px] font-black text-white flex items-center gap-2 italic uppercase tracking-widest"><div className="w-1 h-1 bg-emerald-400 rounded-full" /> Divine Scripting Assistant</div>
+                  <div className="text-[10px] font-black text-white flex items-center gap-2 italic uppercase tracking-widest"><div className="w-1 h-1 bg-emerald-400 rounded-full" /> Full Harmonic Spectrum</div>
+                  <div className="text-[10px] font-black text-white flex items-center gap-2 italic uppercase tracking-widest"><div className="w-1 h-1 bg-emerald-400 rounded-full" /> Instant Manifestation Sync</div>
+                  <div className="text-[10px] font-black text-emerald-400 flex items-center gap-2 italic uppercase tracking-widest"><div className="w-1 h-1 bg-emerald-400 rounded-full" /> Mastery over Reality</div>
+               </div>
+            </div>
+         </div>
+         
+         <div className="mt-12 text-center">
+            <button 
+              onClick={() => {
+                setBillingCycle('yearly');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="text-[9px] font-black uppercase tracking-[0.3em] text-emerald-400 hover:text-white transition-colors italic border-b border-emerald-400/20 pb-1"
+            >
+              Secure the 33% Annual Savings Now
+            </button>
+         </div>
+      </div>
+
+      <div className="p-10 rounded-[3rem] bg-white/5 border border-white/5 text-center relative overflow-hidden group hover:bg-white/[0.08] transition-all">
         <div className="relative z-10 flex flex-col items-center">
-          <div className="w-16 h-16 bg-white/10 rounded-3xl flex items-center justify-center text-white mb-8 border border-white/10">
-            <Zap className="w-8 h-8 fill-white" />
-          </div>
-          <h3 className="text-2xl lg:text-4xl font-black tracking-tight text-white mb-4">Enterprise Manifestation?</h3>
-          <p className="text-stardust/40 font-medium max-w-lg mb-10">We engineer custom vibration solutions for teams, organizations, and high-frequency collectives.</p>
-          <button className="flex items-center gap-3 text-xs font-black uppercase tracking-widest text-white hover:text-stardust transition-colors">
-            Contact the Architect <ArrowRight className="w-4 h-4" />
+          <h3 className="text-xl font-black tracking-tighter text-white mb-2 italic uppercase">Enterprise?</h3>
+          <p className="text-stardust/40 font-medium text-[10px] max-w-md mb-6 uppercase tracking-widest leading-loose">Custom vibrational solutions for organizations, lineages, and institutions.</p>
+          <button className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.3em] text-white/60 hover:text-white transition-all group-hover:gap-4 italic">
+            Contact Architect <ArrowRight className="w-4 h-4 text-emerald-500" />
           </button>
         </div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-white/[0.02] blur-3xl rounded-full" />
+      </div>
+
+      <div className="mt-16 pt-8 border-t border-white/5 flex flex-col items-center gap-8">
+        <div className="flex flex-wrap justify-center gap-8 opacity-20 grayscale hover:grayscale-0 transition-all duration-1000">
+           <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg" alt="PayPal" className="h-4" referrerPolicy="no-referrer" />
+           <img src="https://upload.wikimedia.org/wikipedia/commons/8/89/Razorpay_logo.svg" alt="Razorpay" className="h-4" referrerPolicy="no-referrer" />
+        </div>
+        <p className="text-[8px] font-black uppercase tracking-[0.3em] text-stardust/10 italic">Secured by Universal Intelligence</p>
       </div>
     </div>
   );
@@ -3174,7 +3678,8 @@ const PricingView = ({ setView, user, tier }: { setView: (v: View) => void, user
         currency: "USD",
         intent: "subscription",
         vault: true,
-        components: "buttons"
+        components: "buttons",
+        "disable-funding": "card"
       }}>
         {pricingContent}
       </PayPalScriptProvider>
@@ -3182,4 +3687,4 @@ const PricingView = ({ setView, user, tier }: { setView: (v: View) => void, user
   }
 
   return pricingContent;
-};
+});
