@@ -27,7 +27,7 @@ async function startServer() {
 
   // API Routes
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", message: "LOM Backend is pulsing." });
+    res.json({ status: "ok", message: "Vibe Backend is pulsing." });
   });
 
   // Razorpay Order Creation
@@ -81,10 +81,10 @@ async function startServer() {
       return res.status(400).json({ error: "Email is required." });
     }
 
-    console.log(`[LOM] Triggering ritual email for: ${email} (${ritualName})`);
+    console.log(`[Vibe OS] Triggering ritual email for: ${email} (${ritualName})`);
 
     if (!resend) {
-      console.warn("[LOM] RESEND_API_KEY missing. Manifesting email to console only.");
+      console.warn("[Vibe OS] RESEND_API_KEY missing. Manifesting email to console only.");
       return res.json({ 
         status: "mock", 
         message: "Email simulated. (RESEND_API_KEY missing in environment)" 
@@ -93,7 +93,7 @@ async function startServer() {
 
     try {
       const data = await resend.emails.send({
-        from: 'LOM <onboarding@resend.dev>',
+        from: 'Vibe OS <onboarding@resend.dev>',
         to: [email],
         subject: `Ritual Activation: ${ritualName}`,
         html: `
@@ -106,7 +106,7 @@ async function startServer() {
               <p style="font-size: 24px; font-weight: 900; margin: 0;">${ritualName}</p>
               <p style="font-size: 12px; opacity: 0.5; margin-top: 5px;">Time to align your frequency and manifest your reality.</p>
             </div>
-            <p style="opacity: 0.7;">This is your high-frequency reminder from LOM - Manifest OS.</p>
+            <p style="opacity: 0.7;">This is your high-frequency reminder from Vibe OS.</p>
             <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 40px 0;">
             <p style="font-size: 10px; opacity: 0.3; text-align: center; text-transform: uppercase; letter-spacing: 0.1em;">Quantum Tracking Active • Stay Aligned</p>
           </div>
@@ -136,7 +136,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[LOM] Server running on http://localhost:${PORT}`);
+    console.log(`[Vibe OS] Server running on http://localhost:${PORT}`);
   });
 
   return app;

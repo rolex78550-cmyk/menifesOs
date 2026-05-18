@@ -350,8 +350,8 @@ const Sidebar = ({ currentView, setView, tier }: { currentView: View, setView: (
           <Infinity className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h1 className="text-xl font-black tracking-tighter text-white uppercase italic">LOM</h1>
-          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-500/40">Manifest OS</p>
+          <h1 className="text-xl font-black tracking-tighter text-white uppercase italic">Vibe</h1>
+          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-500/40">Vibe OS</p>
         </div>
       </div>
 
@@ -1004,7 +1004,7 @@ export default function App() {
           <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center shadow-2xl shadow-white/20 mx-auto mb-8">
             <Sparkles className="w-10 h-10 text-cosmic-black" />
           </div>
-          <h1 className="text-4xl lg:text-6xl font-black mb-4 tracking-tighter text-white">LOM (Manifest OS)</h1>
+          <h1 className="text-4xl lg:text-6xl font-black mb-4 tracking-tighter text-white">Vibe OS</h1>
           <p className="text-stardust/60 font-medium mb-10 leading-relaxed">Your frequency determines your reality. Synchronize with the universal source to begin engineering your destiny.</p>
           <button 
             onClick={async () => {
@@ -1076,14 +1076,14 @@ export default function App() {
                 <div className="lg:hidden w-6 h-6 bg-white rounded-lg flex items-center justify-center">
                   <Infinity className="w-4 h-4 text-cosmic-black" />
                 </div>
-                <span className="lg:hidden font-black text-xs tracking-tighter text-stardust uppercase italic">LOM</span>
+                <span className="lg:hidden font-black text-xs tracking-tighter text-stardust uppercase italic">Vibe</span>
                 <h1 className="text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] text-white/60">
                   {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                 </h1>
               </div>
               <h2 className="text-3xl lg:text-5xl font-black capitalize tracking-tight text-white drop-shadow-md flex items-center gap-3">
                 {view}
-                <span className="hidden lg:inline text-[10px] font-black uppercase tracking-[0.4em] text-white/10 ml-4 pt-1 border-l border-white/5 pl-4">LOM System</span>
+                <span className="hidden lg:inline text-[10px] font-black uppercase tracking-[0.4em] text-white/10 ml-4 pt-1 border-l border-white/5 pl-4">Vibe OS</span>
               </h2>
             </div>
             <div className="md:hidden w-10 h-10 bg-white/10 rounded-2xl overflow-hidden border border-white/10 ring-2 ring-white/10 shrink-0" onClick={logout}>
@@ -1281,13 +1281,13 @@ const SettingsView = memo(({ setView, user, tier, onToast }: { setView: (v: View
       Notification.requestPermission().then(permission => {
         if (permission === 'granted') {
           new Notification(`System Aligned`, {
-            body: `You are now synchronized with the Manifest OS frequency.`,
+            body: `You are now synchronized with the Vibe OS frequency.`,
             icon: '/vite.svg'
           });
           onToast({
             id: 'system-aligned',
             title: 'System Aligned',
-            body: 'You are now synchronized with the Manifest OS frequency.'
+            body: 'You are now synchronized with the Vibe OS frequency.'
           });
           playDivineSound();
           if (user?.email) {
@@ -1304,7 +1304,7 @@ const SettingsView = memo(({ setView, user, tier, onToast }: { setView: (v: View
     <div className="max-w-4xl mx-auto px-4 lg:px-0 pb-20">
       <div className="mb-12">
         <h3 className="text-3xl lg:text-4xl font-black mb-4 tracking-tight text-white italic">System Configuration</h3>
-        <p className="text-stardust/40 font-medium leading-relaxed max-w-2xl italic">"The outer world is a reflection of the inner settings." — LOM Core</p>
+        <p className="text-stardust/40 font-medium leading-relaxed max-w-2xl italic">"The outer world is a reflection of the inner settings." — Vibe Core</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1411,7 +1411,7 @@ const SettingsView = memo(({ setView, user, tier, onToast }: { setView: (v: View
                 className="w-full p-4 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl text-left transition-all group"
               >
                 <p className="text-[10px] font-black uppercase tracking-widest text-white">De-authenticate</p>
-                <p className="text-[8px] font-bold text-stardust/20 uppercase tracking-widest">Disconnect from Manifest OS</p>
+                <p className="text-[8px] font-bold text-stardust/20 uppercase tracking-widest">Disconnect from Vibe OS</p>
               </button>
             </div>
           </div>
@@ -1421,7 +1421,7 @@ const SettingsView = memo(({ setView, user, tier, onToast }: { setView: (v: View
         <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] md:col-span-2">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
             <div>
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-white mb-6">Manifest OS</h4>
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-white mb-6">Vibe OS</h4>
               <p className="text-stardust/20 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
                 The absolute operating system for digital manifestation and intention amplification.
               </p>
@@ -1439,7 +1439,7 @@ const SettingsView = memo(({ setView, user, tier, onToast }: { setView: (v: View
               <ul className="space-y-4 text-xs font-bold text-stardust/40 font-serif active-italic">
                 <li onClick={() => setView('privacy')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest underline decoration-white/10">Privacy Protocol</li>
                 <li onClick={() => setView('terms')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest underline decoration-white/10">Terms of Alignment</li>
-                <li className="text-[8px] opacity-20 uppercase tracking-widest">Build ID: LOM.2.0.26.RESONANCE</li>
+                <li className="text-[8px] opacity-20 uppercase tracking-widest">Build ID: VIBE.2.0.26.RESONANCE</li>
               </ul>
             </div>
           </div>
@@ -1679,7 +1679,7 @@ const DashboardView = memo(({
           <div className="flex items-center justify-between mb-8">
             <div className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black uppercase tracking-[0.4em] text-emerald-400 flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-              LOM Engine: Online
+              Vibe Engine: Online
             </div>
             <Activity className="w-4 h-4 text-emerald-500/20 group-hover:text-emerald-400 transition-colors" />
           </div>
@@ -2783,7 +2783,18 @@ const HabitsView = memo(({
                       onClick={(e) => toggleHabit(habit.id, e as any)}
                       className={`w-8 h-8 lg:w-10 lg:h-10 rounded-xl border-2 flex items-center justify-center transition-all ${habit.completed ? 'bg-white border-white shadow-[0_0_15px_rgba(255,255,255,0.4)]' : 'border-white/10 group-hover:border-white'}`}
                     >
-                      {habit.completed && <CheckSquare className="w-4 h-4 lg:w-5 lg:h-5 text-cosmic-black" />}
+                      <AnimatePresence initial={false}>
+                        {habit.completed && (
+                          <motion.div
+                            initial={{ scale: 0.5, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.5, opacity: 0 }}
+                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                          >
+                            <CheckSquare className="w-4 h-4 lg:w-5 lg:h-5 text-cosmic-black" />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </motion.div>
                 ))}
@@ -3206,7 +3217,7 @@ const PlaceholderView = ({ title, description }: { title: string, description: s
 
 const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void, user: User | null, tier: string }) => {
   const [isVerifying, setIsVerifying] = useState(false);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | '6month' | 'yearly'>('monthly');
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'lifetime'>('monthly');
   
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
@@ -3216,6 +3227,21 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
       script.onerror = () => resolve(false);
       document.body.appendChild(script);
     });
+  };
+
+  const getInrPrice = (planName: string) => {
+    if (planName === 'Novice') return 0;
+    if (planName === 'Adept') {
+      if (billingCycle === 'monthly') return 499;
+      if (billingCycle === 'yearly') return 2999;
+      return 6999;
+    }
+    if (planName === 'Ascendant') {
+      if (billingCycle === 'monthly') return 799;
+      if (billingCycle === 'yearly') return 4999;
+      return 9999;
+    }
+    return 0;
   };
 
   const handleRazorpayPayment = async (plan: any) => {
@@ -3236,8 +3262,7 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
       return;
     }
 
-    // Use ₹1 for live testing as requested
-    const inrAmount = 1;
+    const inrAmount = getInrPrice(plan.name);
 
     try {
       const response = await fetch("/api/razorpay/create-order", {
@@ -3261,7 +3286,7 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
         key: import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount: orderData.amount,
         currency: orderData.currency,
-        name: "LOM Manifest OS",
+        name: "Vibe OS",
         description: `${plan.name} (${billingCycle}) Tier Manifestation`,
         order_id: orderData.id,
         handler: async function (response: any) {
@@ -3299,7 +3324,7 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
         },
         prefill: {
           name: user.displayName || "Seeker",
-          email: user.email || "seeker@lom-system.com",
+          email: user.email || "seeker@vibe-os.com",
         },
         theme: {
           color: "#000000",
@@ -3341,14 +3366,14 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
   const getPrice = (planName: string) => {
     if (planName === 'Novice') return '0';
     if (planName === 'Adept') {
-      if (billingCycle === 'monthly') return '11.11';
-      if (billingCycle === '6month') return '55.55';
+      if (billingCycle === 'monthly') return '5.99';
+      if (billingCycle === 'yearly') return '35.99';
       return '88.88';
     }
     if (planName === 'Ascendant') {
-      if (billingCycle === 'monthly') return '22.22';
-      if (billingCycle === '6month') return '111.11';
-      return '188.88';
+      if (billingCycle === 'monthly') return '9.99';
+      if (billingCycle === 'yearly') return '59.99';
+      return '149.99';
     }
     return '0';
   };
@@ -3411,8 +3436,8 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
            <div className="bg-white/5 p-1.5 rounded-[2rem] flex border border-white/10 shadow-2xl">
               {[
                 { id: 'monthly', label: 'Monthly' },
-                { id: '6month', label: '6 Months', best: false },
-                { id: 'yearly', label: 'Yearly', best: true }
+                { id: 'yearly', label: 'Yearly', best: true },
+                { id: 'lifetime', label: 'Lifetime' }
               ].map((cycle) => (
                 <button
                   key={cycle.id}
@@ -3445,12 +3470,12 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
         {plans.map((plan, i) => {
           let effectivePrice = plan.price;
           let savings = 0;
-          if (billingCycle === '6month') {
-            effectivePrice = (parseFloat(plan.price) / 6).toFixed(2);
-            savings = 16;
-          } else if (billingCycle === 'yearly') {
+          if (billingCycle === 'yearly') {
             effectivePrice = (parseFloat(plan.price) / 12).toFixed(2);
-            savings = 33;
+            savings = 50;
+          } else if (billingCycle === 'lifetime') {
+            effectivePrice = (parseFloat(plan.price) / 24).toFixed(2); // Estimated 2 years value
+            savings = 70;
           }
 
           return (
@@ -3486,7 +3511,7 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
                   <div className="flex items-baseline gap-1">
                     <span className="text-5xl lg:text-6xl font-black text-white italic tracking-tighter leading-none">${plan.price}</span>
                     <span className="text-stardust/20 font-bold text-[10px] uppercase tracking-widest">
-                       {billingCycle === 'monthly' ? '/ mo' : billingCycle === '6month' ? '/ 6 mo' : '/ yr'}
+                       {billingCycle === 'monthly' ? '/ mo' : billingCycle === 'yearly' ? '/ yr' : 'once'}
                     </span>
                   </div>
                   {billingCycle !== 'monthly' && plan.name !== 'Novice' && (
@@ -3554,7 +3579,7 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
                     </div>
 
                     <div className="paypal-button-container opacity-60 hover:opacity-100 transition-opacity">
-                      {isPayPalConfigured ? (
+                      {isPayPalConfigured && billingCycle !== 'lifetime' ? (
                         <PayPalButtons 
                           style={{ height: 36, layout: "vertical", shape: "pill", label: "subscribe", color: "white" }}
                           createSubscription={(data, actions) => {

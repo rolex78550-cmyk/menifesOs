@@ -1,6 +1,8 @@
 {
-  "name": "LOM - Manifest OS",
-  "description": "Law of Manifestation Operating System. Feature-rich dashboard for tracking desires, vision boards, and daily rituals with automated quantum reminders and manifestation analytics.",
+  "name": "Vibe OS",
+  "description": "Premium vibration-centered manifestation operating system. Align your energy, visualize your future, and manifest your reality with high-frequency rituals and tracking.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

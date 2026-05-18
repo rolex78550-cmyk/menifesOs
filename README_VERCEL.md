@@ -1,4 +1,4 @@
-# Deploying LOM (Manifest OS) to Vercel
+# Deploying Vibe OS to Vercel
 
 This app is built with a Full-Stack React + Express + Vite architecture.
 

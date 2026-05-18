@@ -1,6 +1,6 @@
-# LOM (Manifest OS) Deployment Guide
+# Vibe OS Deployment Guide
 
-Your LOM (Law of Manifestation) system is ready for the world. Here is how to host it for maximum scalability.
+Your Vibe OS system is ready for the world. Here is how to host it for maximum scalability.
 
 ## Option A: Vercel (Recommended for SaaS)
 Vercel is the easiest place to host Full-Stack React + Express apps.
