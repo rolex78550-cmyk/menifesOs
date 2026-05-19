@@ -18,11 +18,53 @@ app.use(cors());
 // Resend Initialization
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
-// Razorpay Initialization
-const razorpay = process.env.RAZORPAY_SECRET_KEY ? new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || '',
-  key_secret: process.env.RAZORPAY_SECRET_KEY,
-}) : null;
+// Razorpay Initialization Helper
+const getRazorpay = () => {
+  // Check multiple possible env var names for ID and Secret
+  const key_id_raw = 
+    process.env.RAZORPAY_KEY_ID || 
+    process.env.VITE_RAZORPAY_KEY_ID || 
+    process.env.VITE_RAZORPAY_KEY ||
+    process.env.RAZORPAY_ID;
+
+  const key_secret_raw = 
+    process.env.RAZORPAY_SECRET_KEY || 
+    process.env.VITE_RAZORPAY_SECRET_KEY || 
+    process.env.RAZORPAY_KEY_SECRET ||
+    process.env.RAZORPAY_SECRET ||
+    process.env.RAZORPAY_SECRET_K; // User screenshot had this truncation
+  
+  if (!key_id_raw || !key_secret_raw) {
+    if (!key_id_raw) console.warn("[Razorpay] Missing RAZORPAY_KEY_ID in environment.");
+    if (!key_secret_raw) console.warn("[Razorpay] Missing RAZORPAY_SECRET_KEY in environment.");
+    return null;
+  }
+
+  // Clean the keys (remove whitespace and potential leading colons from copy-paste)
+  const key_id = key_id_raw.trim().replace(/^:/, "");
+  const key_secret = key_secret_raw.trim().replace(/^:/, "");
+  
+  if (key_id === "your_razorpay_key_id_here" || key_secret === "your_razorpay_secret_key_here") {
+    console.warn("[Razorpay] Keys are still set to placeholders.");
+    return null;
+  }
+
+  // Log key info for debugging (Safe: only logs prefix and length)
+  console.log(`[Razorpay] DEBUG SETUP:`);
+  console.log(` - ID: ${key_id.substring(0, 8)}... (len: ${key_id.length})`);
+  console.log(` - Secret: ${key_secret.substring(0, 4)}... (len: ${key_secret.length})`);
+  
+  if (key_id.startsWith('rzp_test_') && key_secret.length > 24) {
+    console.log(" [Razorpay] Keys look like they are in the correct format.");
+  } else if (key_id.length > 24 && key_secret.startsWith('rzp_test_')) {
+    console.warn(" [Razorpay] WARNING: It looks like you might have swapped the KEY_ID and SECRET_KEY!");
+  }
+  
+  return new Razorpay({
+    key_id,
+    key_secret,
+  });
+};
 
 // API Routes
 app.get("/api/health", (req, res) => {
@@ -31,21 +73,38 @@ app.get("/api/health", (req, res) => {
 
 // Razorpay Order Creation
 app.post("/api/razorpay/create-order", async (req, res) => {
-  if (!razorpay) {
-    return res.status(500).json({ error: "Razorpay not configured on server (RAZORPAY_SECRET_KEY missing)." });
+  const rzp = getRazorpay();
+  if (!rzp) {
+    return res.status(500).json({ error: "Razorpay API keys are missing or set to placeholder. Please update RAZORPAY_KEY_ID and RAZORPAY_SECRET_KEY in Environment Variables." });
   }
   
   const { amount, currency, receipt } = req.body;
   try {
-    const order = await razorpay.orders.create({
+    const order = await rzp.orders.create({
       amount: Math.round(parseFloat(amount) * 100), 
       currency,
       receipt,
     });
     res.json(order);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Razorpay Order Error:", error);
-    res.status(500).json({ error: "Failed to create order." });
+    // Be more specific for authentication errors
+    if (error.statusCode === 401) {
+      const key_id = (
+        process.env.RAZORPAY_KEY_ID || 
+        process.env.VITE_RAZORPAY_KEY_ID || 
+        process.env.VITE_RAZORPAY_KEY ||
+        process.env.RAZORPAY_ID ||
+        ""
+      ).trim();
+      return res.status(401).json({ 
+        error: "Razorpay Authentication Failed", 
+        details: "Your Key ID or Secret is invalid. Double-check them in AI Studio Settings -> Environment Variables.",
+        debug_id_prefix: key_id.substring(0, 8) + "...",
+        debug_id_len: key_id.length
+      });
+    }
+    res.status(500).json({ error: "Failed to create order. Check server logs." });
   }
 });
 
@@ -53,13 +112,22 @@ app.post("/api/razorpay/create-order", async (req, res) => {
 app.post("/api/razorpay/verify-payment", async (req, res) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
   
-  if (!process.env.RAZORPAY_SECRET_KEY) {
-    return res.status(500).json({ error: "Razorpay secret key missing on server." });
+  const rawSecret = 
+    process.env.RAZORPAY_SECRET_KEY || 
+    process.env.VITE_RAZORPAY_SECRET_KEY || 
+    process.env.RAZORPAY_KEY_SECRET ||
+    process.env.RAZORPAY_SECRET ||
+    process.env.RAZORPAY_SECRET_K;
+
+  if (!rawSecret || rawSecret === "your_razorpay_secret_key_here") {
+    return res.status(500).json({ error: "Razorpay secret key missing or invalid on server." });
   }
+  
+  const secret = rawSecret.trim().replace(/^:/, "");
 
   const body = razorpay_order_id + "|" + razorpay_payment_id;
   const expectedSignature = crypto
-    .createHmac("sha256", process.env.RAZORPAY_SECRET_KEY)
+    .createHmac("sha256", secret)
     .update(body.toString())
     .digest("hex");
 

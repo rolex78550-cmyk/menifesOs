@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef, ChangeEvent, MouseEvent, FormEvent, memo } from 'react';
+import { useState, useEffect, useRef, ChangeEvent, MouseEvent, FormEvent, memo, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { 
@@ -17,7 +17,8 @@ import {
   doc, 
   setDoc,
   serverTimestamp,
-  orderBy
+  orderBy,
+  Timestamp
 } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db, loginWithGoogle, logout, handleFirestoreError, OperationType, testConnection, updateProfile } from './lib/firebase';
@@ -70,6 +71,7 @@ import {
   Settings, 
   Plus, 
   CheckCircle2,
+  Lock,
   Star,
   ChevronRight,
   Search,
@@ -105,7 +107,11 @@ import {
   Users,
   Check,
   ShieldCheck,
-  Award
+  Award,
+  Calendar,
+  BarChart3,
+  Clock,
+  TrendingDown
 } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { 
@@ -118,7 +124,9 @@ import {
   ResponsiveContainer,
   PieChart,
   Pie,
-  Cell
+  Cell,
+  BarChart,
+  Bar
 } from 'recharts';
 
 // --- Types ---
@@ -330,49 +338,50 @@ const HabitMetricsModal = ({ habit, onClose, onSave }: { habit: Habit, onClose: 
   );
 };
 
-const Sidebar = ({ currentView, setView, tier }: { currentView: View, setView: (v: View) => void, tier: string }) => {
+const Sidebar = memo(({ currentView, setView, tier, isMobile }: { currentView: View, setView: (v: View) => void, tier: string, isMobile: boolean }) => {
   const menuItems = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Omni View' },
-    { id: 'manifest', icon: Target, label: 'Desire Log' },
-    { id: 'habits', icon: Zap, label: 'Habits' },
-    { id: 'vision', icon: ImageIcon, label: 'Vision Board' },
-    { id: 'wealth', icon: Wallet, label: 'Abundance' },
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Omni' },
+    { id: 'manifest', icon: Target, label: 'Desire' },
+    { id: 'habits', icon: Zap, label: 'Rituals' },
+    { id: 'vision', icon: ImageIcon, label: 'Vision' },
+    { id: 'wealth', icon: Wallet, label: 'Flow' },
     { id: 'sonic', icon: Waves, label: 'Sonic' },
     { id: 'academy', icon: Library, label: 'Academy' },
     { id: 'pricing', icon: Sparkles, label: 'Upgrade' },
-    { id: 'settings', icon: Settings, label: 'Settings' },
+    { id: 'settings', icon: Settings, label: 'Setup' },
   ];
 
   return (
-    <div className="w-full lg:w-64 lg:border-r border-emerald-500/10 lg:h-screen flex lg:flex-col px-4 py-3 lg:p-6 fixed bottom-0 lg:top-0 left-0 bg-cosmic-black/95 lg:bg-cosmic-void/80 backdrop-blur-3xl z-50 overflow-x-auto lg:overflow-x-hidden border-t lg:border-t-0 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] lg:shadow-none">
+    <div className="w-full lg:w-72 fixed bottom-0 lg:top-0 lg:left-0 lg:bottom-0 bg-[#000105]/95 lg:bg-[#000105] backdrop-blur-xl z-[100] border-t lg:border-t-0 lg:border-r border-emerald-500/10 shadow-[0_-10px_40px_rgba(0,0,0,0.8)] lg:shadow-none safe-bottom overflow-y-auto lg:overflow-y-auto no-scrollbar flex lg:flex-col lg:h-screen px-4 py-3 lg:px-6 lg:py-10">
       <div className="hidden lg:flex items-center gap-3 mb-12 px-2 group cursor-pointer" onClick={() => setView('dashboard')}>
         <div className="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-2xl shadow-emerald-500/20 group-hover:rotate-12 transition-transform">
           <Infinity className="w-6 h-6 text-white" />
         </div>
         <div>
           <h1 className="text-xl font-black tracking-tighter text-white uppercase italic">Vibe</h1>
-          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-500/40">Vibe OS</p>
+          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-500/40">Continuum</p>
         </div>
       </div>
 
-      <nav className="flex lg:flex-col gap-1 lg:gap-2 flex-grow min-w-max lg:min-w-0 items-center lg:items-stretch bg-emerald-500/[0.03] p-1 rounded-2xl border border-emerald-500/5">
+      <motion.nav 
+        layout={!isMobile}
+        className="flex lg:flex-col gap-1 sm:gap-1.5 lg:gap-2 flex-grow overflow-x-auto lg:overflow-x-visible no-scrollbar p-1 rounded-2xl lg:bg-emerald-500/5 border border-emerald-500/5 lg:border-emerald-500/10"
+      >
         {menuItems.map((item) => (
-          <motion.button
+          <button
             key={item.id}
-            whileHover={{ scale: 1.02, x: 5 }}
-            whileTap={{ scale: 0.98 }}
             onClick={() => setView(item.id as View)}
-            className={`flex flex-col lg:flex-row items-center gap-1.5 lg:gap-3 px-3 lg:px-4 py-2 lg:py-3 rounded-xl text-[10px] lg:text-sm font-black lg:font-bold transition-all whitespace-nowrap lg:whitespace-normal group ${
+            className={`flex flex-col lg:flex-row items-center gap-1 lg:gap-3 px-4 lg:px-4 py-1.5 lg:py-3.5 rounded-xl text-[9px] lg:text-sm font-black lg:font-bold transition-all whitespace-nowrap lg:whitespace-normal shrink-0 ${
               currentView === item.id 
-                ? 'bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)]' 
-                : 'text-stardust/40 hover:bg-emerald-500/10 hover:text-emerald-400'
+                ? 'bg-emerald-500 text-white shadow-lg' 
+                : 'text-stardust/40 hover:bg-emerald-500/10 hover:text-emerald-400 active:scale-95'
             }`}
           >
-            <item.icon className={`w-5 h-5 lg:w-4 lg:h-4 ${currentView === item.id ? 'animate-pulse' : ''}`} />
+            <item.icon className={`w-4.5 h-4.5 lg:w-4 lg:h-4 ${currentView === item.id ? 'scale-110' : ''}`} />
             <span className="block uppercase tracking-tighter lg:tracking-normal lg:normal-case">{item.label}</span>
-          </motion.button>
+          </button>
         ))}
-      </nav>
+      </motion.nav>
 
       <div className="hidden lg:block pt-6 border-t border-emerald-500/10 mt-auto">
         <div className="mb-4 px-4 py-3 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 group cursor-pointer hover:bg-emerald-500/10 transition-all">
@@ -384,23 +393,48 @@ const Sidebar = ({ currentView, setView, tier }: { currentView: View, setView: (
       </div>
     </div>
   );
-};
+});
 
-const CosmicBackground = () => {
+const CosmicBackground = memo(({ isMobile }: { isMobile?: boolean }) => {
+  const [internalIsMobile, setInternalIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (isMobile !== undefined) return;
+    const checkMobile = () => setInternalIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, [isMobile]);
+
+  const activeIsMobile = isMobile !== undefined ? isMobile : internalIsMobile;
+
+  const stars = useMemo(() => {
+    // Dramatically reduced counts for mobile to save CPU/GPU
+    const farCount = activeIsMobile ? 15 : 100;
+    const midCount = activeIsMobile ? 0 : 60;
+    const closeCount = activeIsMobile ? 5 : 30;
+
+    return {
+      far: [...Array(farCount)].map(() => ({ top: Math.random() * 200, left: Math.random() * 100 })),
+      mid: [...Array(midCount)].map(() => ({ top: Math.random() * 200, left: Math.random() * 100 })),
+      close: [...Array(closeCount)].map(() => ({ top: Math.random() * 200, left: Math.random() * 100 }))
+    };
+  }, [activeIsMobile]);
+
   return (
     <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none bg-[#000105]">
       {/* Deep Space Dust Layers */}
-      <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
+      <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] will-change-transform transform-gpu" />
       
       {/* Infinite Star Field - Far Layer */}
-      <div className="absolute inset-[-100vh] animate-star-move" style={{ '--duration': '200s' } as any}>
-        {[...Array(100)].map((_, i) => (
+      <div className="absolute inset-[-100vh] animate-star-move will-change-transform transform-gpu" style={{ '--duration': '200s' } as any}>
+        {stars.far.map((star, i) => (
           <div 
             key={i}
             className="absolute rounded-full bg-white opacity-20"
             style={{
-              top: `${Math.random() * 200}%`,
-              left: `${Math.random() * 100}%`,
+              top: `${star.top}%`,
+              left: `${star.left}%`,
               width: '1px',
               height: '1px',
             }}
@@ -408,32 +442,34 @@ const CosmicBackground = () => {
         ))}
       </div>
 
-      {/* Infinite Star Field - Mid Layer */}
-      <div className="absolute inset-[-100vh] animate-star-move" style={{ '--duration': '100s' } as any}>
-        {[...Array(60)].map((_, i) => (
-          <div 
-            key={i}
-            className="absolute rounded-full bg-white opacity-40 animate-pulse-slow"
-            style={{
-              top: `${Math.random() * 200}%`,
-              left: `${Math.random() * 100}%`,
-              width: '1.5px',
-              height: '1.5px',
-              animationDelay: `${Math.random() * 5}s`
-            }}
-          />
-        ))}
-      </div>
+      {/* Infinite Star Field - Mid Layer (Limited on Mobile) */}
+      {!activeIsMobile && (
+        <div className="absolute inset-[-100vh] animate-star-move will-change-transform transform-gpu" style={{ '--duration': '100s' } as any}>
+          {stars.mid.map((star, i) => (
+            <div 
+              key={i}
+              className="absolute rounded-full bg-white opacity-40 animate-pulse-slow"
+              style={{
+                top: `${star.top}%`,
+                left: `${star.left}%`,
+                width: '1.5px',
+                height: '1.5px',
+                animationDelay: `${Math.random() * 5}s`
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Infinite Star Field - Close Layer */}
-      <div className="absolute inset-[-100vh] animate-star-move" style={{ '--duration': '50s' } as any}>
-        {[...Array(30)].map((_, i) => (
+      <div className="absolute inset-[-100vh] animate-star-move will-change-transform transform-gpu" style={{ '--duration': '50s' } as any}>
+        {stars.close.map((star, i) => (
           <div 
             key={i}
             className="absolute rounded-full bg-white opacity-60"
             style={{
-              top: `${Math.random() * 200}%`,
-              left: `${Math.random() * 100}%`,
+              top: `${star.top}%`,
+              left: `${star.left}%`,
               width: '2px',
               height: '2px',
             }}
@@ -441,45 +477,112 @@ const CosmicBackground = () => {
         ))}
       </div>
 
-      {/* Gargantua Black Hole System */}
-      <div className="absolute -bottom-40 -left-40 lg:-bottom-60 lg:-left-60 w-[50rem] h-[50rem] lg:w-[80rem] lg:h-[80rem] opacity-70">
-        
-        {/* The Gravitational Lensing (The 'Halo') */}
-        <div className="absolute inset-0 rounded-full animate-gargantua opacity-40">
-          <div className="absolute inset-0 rounded-full border-[100px] border-white/10 blur-3xl" />
-          <div className="absolute inset-[15%] rounded-full border-[20px] border-white/20 blur-xl" />
+      {/* Gargantua Black Hole System (Only on Desktop for Performance) */}
+      {!activeIsMobile && (
+        <div className="absolute -bottom-40 -left-40 lg:-bottom-60 lg:-left-60 w-[50rem] h-[50rem] lg:w-[80rem] lg:h-[80rem] opacity-70 will-change-transform">
+          
+          {/* The Gravitational Lensing (The 'Halo') */}
+          <div className="absolute inset-0 rounded-full animate-gargantua opacity-40">
+            <div className="absolute inset-0 rounded-full border-[100px] border-white/10 blur-3xl" />
+            <div className="absolute inset-[15%] rounded-full border-[20px] border-white/20 blur-xl" />
+          </div>
+
+          {/* Accretion Disk (Front) */}
+          <div className="absolute top-1/2 left-[-20%] right-[-20%] h-[15%] lg:h-[10%] bg-gradient-to-r from-transparent via-white/20 to-transparent blur-2xl animate-accretion z-20" />
+          <div className="absolute top-1/2 left-[-10%] right-[-10%] h-[2%] lg:h-[1%] bg-white/40 blur-md animate-accretion z-30" style={{ animationDelay: '-2s' }} />
+
+          {/* The Event Horizon (The Void) */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40%] h-[40%] rounded-full bg-black z-40 shadow-[0_0_80px_rgba(255,255,255,0.2)] animate-event-horizon overflow-hidden">
+            {/* Inner warp effect */}
+            <div className="absolute inset-0 opacity-20 bg-gradient-to-br from-white/10 to-transparent animate-spin-slow" />
+          </div>
+
+          {/* Gravitational Warp (Top/Bottom Disk Reflection) */}
+          <div className="absolute top-[20%] left-0 right-0 h-[20%] bg-white/5 blur-3xl rounded-[100%] z-10" />
+          <div className="absolute bottom-[20%] left-0 right-0 h-[20%] bg-white/5 blur-3xl rounded-[100%] z-10" />
         </div>
+      )}
 
-        {/* Accretion Disk (Front) */}
-        <div className="absolute top-1/2 left-[-20%] right-[-20%] h-[15%] lg:h-[10%] bg-gradient-to-r from-transparent via-white/20 to-transparent blur-2xl animate-accretion z-20" />
-        <div className="absolute top-1/2 left-[-10%] right-[-10%] h-[2%] lg:h-[1%] bg-white/40 blur-md animate-accretion z-30" style={{ animationDelay: '-2s' }} />
-
-        {/* The Event Horizon (The Void) */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40%] h-[40%] rounded-full bg-black z-40 shadow-[0_0_80px_rgba(255,255,255,0.2)] animate-event-horizon overflow-hidden">
-          {/* Inner warp effect */}
-          <div className="absolute inset-0 opacity-20 bg-gradient-to-br from-white/10 to-transparent animate-spin-slow" />
+      {/* Shooting Stars (Only on Desktop) */}
+      {!activeIsMobile && (
+        <div className="absolute top-0 right-0 w-full h-full opacity-60">
+          <div className="absolute top-[10%] left-[85%] w-[1px] h-[120px] bg-gradient-to-t from-white/40 to-transparent rotate-[215deg] animate-shooting-star" style={{ animationDelay: '3s' }} />
+          <div className="absolute top-[40%] left-[95%] w-[1px] h-[200px] bg-gradient-to-t from-white/60 to-transparent rotate-[215deg] animate-shooting-star" style={{ animationDelay: '12s' }} />
         </div>
-
-        {/* Gravitational Warp (Top/Bottom Disk Reflection) */}
-        <div className="absolute top-[20%] left-0 right-0 h-[20%] bg-white/5 blur-3xl rounded-[100%] z-10" />
-        <div className="absolute bottom-[20%] left-0 right-0 h-[20%] bg-white/5 blur-3xl rounded-[100%] z-10" />
-      </div>
-
-      {/* Shooting Stars */}
-      <div className="absolute top-0 right-0 w-full h-full opacity-60">
-        <div className="absolute top-[10%] left-[85%] w-[1px] h-[120px] bg-gradient-to-t from-white/40 to-transparent rotate-[215deg] animate-shooting-star" style={{ animationDelay: '3s' }} />
-        <div className="absolute top-[40%] left-[95%] w-[1px] h-[200px] bg-gradient-to-t from-white/60 to-transparent rotate-[215deg] animate-shooting-star" style={{ animationDelay: '12s' }} />
-      </div>
+      )}
     </div>
   );
-};
+});
+
+const insights = [
+  "Your focus creates your reality. Today, focus on abundance.",
+  "The universe and you are one. Align with the frequency of your desires.",
+  "Small rituals pave the way for massive shifts in destiny.",
+  "Trust the timing of your life. The manifestation is unfolding.",
+  "Release resistance. Allow the flow of wealth and joy to enter.",
+  "Every breath is a new opportunity to manifest a better world.",
+  "Your vibration is your currency. Spend it on high-frequency thoughts.",
+  "The secret to manifestation is feeling it before seeing it.",
+  "You are the architect of your soul's journey. Build with love."
+];
 
 export default function App() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   const [view, setView] = useState<View>('dashboard');
+
+  // Permanent fix for persistent Vite WebSocket error in AI Studio
+  useEffect(() => {
+    const originalError = console.error;
+    console.error = (...args: any[]) => {
+      if (typeof args[0] === 'string' && (args[0].includes('failed to connect to websocket') || args[0].includes('WebSocket closed without opened'))) {
+        return;
+      }
+      originalError.apply(console, args);
+    };
+    
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      if (event.reason && (event.reason.message?.includes('WebSocket closed') || (event.reason.name === 'Error' && event.reason.message === 'WebSocket closed without opened.'))) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener('unhandledrejection', handleRejection);
+    return () => window.removeEventListener('unhandledrejection', handleRejection);
+  }, []);
   const [user, setUser] = useState<User | null>(null);
-  const [userProfile, setUserProfile] = useState<{ tier: string } | null>(null);
+  const [userProfile, setUserProfile] = useState<{ tier: string, subscriptionExpiry?: any } | null>(null);
   const [loading, setLoading] = useState(true);
   const [habits, setHabits] = useState<Habit[]>([]);
+
+  // Check if subscription is still valid
+  const isTierActive = useMemo(() => {
+    if (!userProfile) return false;
+    if (userProfile.tier === 'Novice') return true;
+    if (!userProfile.subscriptionExpiry) return false;
+    
+    const now = new Date().getTime();
+    let expiryTime = 0;
+    
+    if (userProfile.subscriptionExpiry?.seconds) {
+      expiryTime = userProfile.subscriptionExpiry.seconds * 1000;
+    } else if (userProfile.subscriptionExpiry instanceof Date) {
+      expiryTime = userProfile.subscriptionExpiry.getTime();
+    } else {
+      expiryTime = new Date(userProfile.subscriptionExpiry).getTime();
+    }
+    
+    return now < expiryTime;
+  }, [userProfile]);
+
+  const activeTier = isTierActive ? (userProfile?.tier || 'Novice') : 'Novice';
   const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
   const [desires, setDesires] = useState<Desire[]>([]);
   const [visionItems, setVisionItems] = useState<VisionItem[]>([]);
@@ -488,18 +591,6 @@ export default function App() {
   const [focusIndex, setFocusIndex] = useState(0);
   const [insight, setInsight] = useState('Universal energy is flowing through you today.');
   const mainContainerRef = useRef<HTMLElement>(null);
-  const insights = [
-    "Your focus creates your reality. Today, focus on abundance.",
-    "The universe and you are one. Align with the frequency of your desires.",
-    "Small rituals pave the way for massive shifts in destiny.",
-    "Trust the timing of your life. The manifestation is unfolding.",
-    "Release resistance. Allow the flow of wealth and joy to enter.",
-    "Every breath is a new opportunity to manifest a better world.",
-    "Your vibration is your currency. Spend it on high-frequency thoughts.",
-    "The secret to manifestation is feeling it before seeing it.",
-    "You are the architect of your soul's journey. Build with love."
-  ];
-
   useEffect(() => {
     const randomInsight = insights[Math.floor(Math.random() * insights.length)];
     setInsight(randomInsight);
@@ -995,7 +1086,7 @@ export default function App() {
   if (!user) {
     return (
       <div className="min-h-screen bg-cosmic-black text-stardust flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        <CosmicBackground />
+        <CosmicBackground isMobile={isMobile} />
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1029,6 +1120,7 @@ export default function App() {
       case 'dashboard': return (
         <DashboardView 
           habits={habits} 
+          habitLogs={habitLogs}
           desires={desires} 
           visionItems={visionItems} 
           transactions={transactions}
@@ -1037,26 +1129,28 @@ export default function App() {
           toggleHabit={toggleHabit}
           setView={setView}
           addTransaction={addTransaction}
+          isMobile={isMobile}
+          tier={activeTier}
         />
       );
-      case 'manifest': return <ManifestView desires={desires} addDesire={addDesire} removeDesire={removeDesire} toggleDesire={toggleDesire} />;
-      case 'habits': return <HabitsView habits={habits} habitLogs={habitLogs} addHabit={addHabit} updateHabit={updateHabit} removeHabit={removeHabit} toggleHabit={toggleHabit} diaryEntries={diaryEntries} addDiaryEntry={addDiaryEntry} />;
+      case 'manifest': return <ManifestView desires={desires} addDesire={addDesire} removeDesire={removeDesire} toggleDesire={toggleDesire} isMobile={isMobile} />;
+      case 'habits': return <HabitsView habits={habits} habitLogs={habitLogs} addHabit={addHabit} updateHabit={updateHabit} removeHabit={removeHabit} toggleHabit={toggleHabit} diaryEntries={diaryEntries} addDiaryEntry={addDiaryEntry} isMobile={isMobile} tier={activeTier} />;
       case 'vision': return <VisionBoardView items={visionItems} addItem={addVisionItem} removeItem={removeVisionItem} />;
-      case 'wealth': return <WealthView transactions={transactions} addTransaction={addTransaction} removeTransaction={removeTransaction} />;
-      case 'sonic': return <SonicView activeHz={activeHz} onToggle={toggleFrequency} />;
-      case 'academy': return <AcademyView />;
-      case 'pricing': return <PricingView setView={setView} user={user} tier={userProfile?.tier || 'Novice'} />;
-      case 'settings': return <SettingsView setView={setView} user={user} tier={userProfile?.tier || 'Novice'} onToast={setActiveToast} />;
+      case 'wealth': return <WealthView transactions={transactions} addTransaction={addTransaction} removeTransaction={removeTransaction} isMobile={isMobile} />;
+      case 'sonic': return <SonicView activeHz={activeHz} onToggle={toggleFrequency} isMobile={isMobile} />;
+      case 'academy': return <AcademyView tier={activeTier} />;
+      case 'pricing': return <PricingView setView={setView} user={user} tier={activeTier} isMobile={isMobile} />;
+      case 'settings': return <SettingsView setView={setView} user={user} tier={userProfile?.tier || 'Novice'} onToast={setActiveToast} expiry={userProfile?.subscriptionExpiry} />;
       case 'terms': return <TermsView setView={setView} />;
       case 'privacy': return <PrivacyView setView={setView} />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-cosmic-black text-stardust font-sans flex flex-col lg:flex-row relative overflow-hidden">
-      <CosmicBackground />
+    <div className="min-h-screen bg-cosmic-black text-stardust font-sans flex flex-col lg:flex-row relative lg:overflow-hidden gpu">
+      <CosmicBackground isMobile={isMobile} />
       
-      <Sidebar currentView={view} setView={setView} tier={userProfile?.tier || 'Novice'} />
+      <Sidebar currentView={view} setView={setView} tier={userProfile?.tier || 'Novice'} isMobile={isMobile} />
       
       <AnimatePresence>
         {completingHabitId && (
@@ -1068,8 +1162,8 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main ref={mainContainerRef} className="flex-grow lg:ml-64 p-5 md:p-8 lg:p-12 mb-24 lg:mb-0 overflow-y-auto relative z-10">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10 lg:mb-16">
+      <main ref={mainContainerRef} className="flex-grow lg:pl-72 p-4 lg:p-5 mb-28 lg:mb-0 min-h-screen lg:h-screen overflow-y-auto lg:overflow-y-auto relative z-10 no-scrollbar overscroll-behavior-contain touch-pan-y">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 lg:mb-8">
           <div className="w-full lg:w-auto flex items-center justify-between md:block">
             <div>
               <div className="flex items-center gap-2 mb-1 lg:mb-2">
@@ -1081,7 +1175,7 @@ export default function App() {
                   {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                 </h1>
               </div>
-              <h2 className="text-3xl lg:text-5xl font-black capitalize tracking-tight text-white drop-shadow-md flex items-center gap-3">
+              <h2 className="text-2xl lg:text-4xl font-black capitalize tracking-tight text-white drop-shadow-md flex items-center gap-2">
                 {view}
                 <span className="hidden lg:inline text-[10px] font-black uppercase tracking-[0.4em] text-white/10 ml-4 pt-1 border-l border-white/5 pl-4">Vibe OS</span>
               </h2>
@@ -1130,18 +1224,24 @@ export default function App() {
           </div>
         </header>
 
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={view}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300, mass: 0.8 }}
-          >
-            {renderView()}
-          </motion.div>
-        </AnimatePresence>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={view}
+          initial={isMobile ? { opacity: 0 } : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={isMobile ? { opacity: 0 } : { opacity: 0, y: -10 }}
+          transition={{ 
+            type: 'tween', 
+            duration: isMobile ? 0.12 : 0.3,
+            ease: [0.23, 1, 0.32, 1]
+          }}
+          className="will-change-transform transform-gpu"
+        >
+          {renderView()}
+        </motion.div>
+      </AnimatePresence>
       </main>
+
 
       {/* Floating Toast Notification */}
       <AnimatePresence>
@@ -1219,7 +1319,7 @@ export default function App() {
   );
 }
 
-const SettingsView = memo(({ setView, user, tier, onToast }: { setView: (v: View) => void, user: User | null, tier: string, onToast: (t: any) => void }) => {
+const SettingsView = memo(({ setView, user, tier, onToast, expiry }: { setView: (v: View) => void, user: User | null, tier: string, onToast: (t: any) => void, expiry?: any }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [isUpdating, setIsUpdating] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -1363,6 +1463,11 @@ const SettingsView = memo(({ setView, user, tier, onToast }: { setView: (v: View
                 <p className="text-[10px] font-bold text-stardust/20 uppercase tracking-widest">Current Resonant State</p>
               </div>
             </div>
+            {expiry && tier !== 'Novice' && (
+              <p className="text-[9px] font-bold text-emerald-400/60 uppercase tracking-[0.2em] mb-4 italic">
+                Manifestation Window Closes: {new Date(expiry.seconds ? expiry.seconds * 1000 : (expiry.toDate ? expiry.toDate() : expiry)).toLocaleDateString()}
+              </p>
+            )}
           </div>
           <button 
             onClick={() => setView('pricing')}
@@ -1515,7 +1620,7 @@ const PrivacyView = ({ setView }: { setView: (v: View) => void }) => (
   </div>
 );
 
-const SonicView = memo(({ activeHz, onToggle }: { activeHz: number | null, onToggle: (hz: number) => void }) => {
+const SonicView = memo(({ activeHz, onToggle, isMobile }: { activeHz: number | null, onToggle: (hz: number) => void, isMobile: boolean }) => {
   const frequencies = [
     { hz: 174, label: "Quantum Foundation", benefit: "Anxiety relief & pain reduction.", description: "The lowest frequency provides a stable foundation for manifestation." },
     { hz: 285, label: "Tissue Regeneration", benefit: "Heals internal organs & energy fields.", description: "Restores the blueprint of homeostatic health." },
@@ -1581,8 +1686,209 @@ const SonicView = memo(({ activeHz, onToggle }: { activeHz: number | null, onTog
 
 // --- View Sub-components ---
 
+const SacredMetrics = memo(({ habits, logs, transactions, isMobile }: { habits: Habit[], logs: HabitLog[], transactions: Transaction[], isMobile: boolean }) => {
+  const [mode, setMode] = useState<'habits' | 'wealth'>('habits');
+  const [timeframe, setTimeframe] = useState<'week' | 'month' | 'year'>('week');
+  
+  const metricsData = useMemo(() => {
+    const today = new Date();
+    const range = timeframe === 'week' ? 7 : timeframe === 'month' ? 30 : 365;
+    const data = [];
+    
+    // Performance: Group logs by date once to avoid O(N*M) filtering
+    const logsByDate: Record<string, HabitLog[]> = {};
+    logs.forEach(l => {
+      const date = (l.timestamp?.toDate ? l.timestamp.toDate() : new Date(l.timestamp)).toISOString().split('T')[0];
+      if (!logsByDate[date]) logsByDate[date] = [];
+      logsByDate[date].push(l);
+    });
+
+    if (mode === 'habits') {
+      if (timeframe === 'year') {
+        const weekScores: Record<number, number> = {};
+        logs.forEach(l => {
+          const logDate = l.timestamp?.toDate ? l.timestamp.toDate() : new Date(l.timestamp);
+          const diff = today.getTime() - logDate.getTime();
+          const weekIndex = Math.floor(diff / (1000 * 60 * 60 * 24 * 7));
+          if (weekIndex >= 0 && weekIndex < 52) {
+            weekScores[weekIndex] = (weekScores[weekIndex] || 0) + 1;
+          }
+        });
+
+        for (let i = 51; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(today.getDate() - (i * 7));
+          const weekStart = new Date(d);
+          weekStart.setDate(d.getDate() - d.getDay());
+
+          const score = habits.length > 0 ? ( (weekScores[i] || 0) / (habits.length * 7)) * 100 : 0;
+          data.push({
+            date: weekStart.toISOString().split('T')[0],
+            displayDate: weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            value: Math.min(100, Math.round(score))
+          });
+        }
+      } else {
+        for (let i = range - 1; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(today.getDate() - i);
+          const dateStr = d.toISOString().split('T')[0];
+          const dayLogs = logsByDate[dateStr] || [];
+          const score = habits.length > 0 ? Math.min(100, (dayLogs.length / habits.length) * 100) : 0;
+          data.push({
+            date: dateStr,
+            displayDate: d.toLocaleDateString('en-US', { 
+              weekday: timeframe === 'week' ? 'short' : undefined, 
+              day: 'numeric', 
+              month: timeframe === 'week' ? undefined : 'short' 
+            }),
+            value: Math.round(score)
+          });
+        }
+      }
+    } else {
+      // Wealth mode: Show cumulative balance over time
+      const txByDate: Record<string, Transaction[]> = {};
+      transactions.forEach(t => {
+        const date = (t.timestamp?.toDate ? t.timestamp.toDate() : new Date(t.timestamp)).toISOString().split('T')[0];
+        if (!txByDate[date]) txByDate[date] = [];
+        txByDate[date].push(t);
+      });
+
+      let currentBalance = 0; 
+      for (let i = range - 1; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(today.getDate() - i);
+        const dateStr = d.toISOString().split('T')[0];
+        
+        const dayTransactions = txByDate[dateStr] || [];
+        const dayNet = dayTransactions.reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0);
+        currentBalance += dayNet;
+
+        data.push({
+          date: dateStr,
+          displayDate: d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+          value: currentBalance
+        });
+      }
+    }
+    return data;
+  }, [habits, logs, transactions, timeframe, mode]);
+
+  const avgValue = metricsData.length > 0 
+    ? Math.round(metricsData.reduce((acc, curr) => acc + curr.value, 0) / metricsData.length)
+    : 0;
+
+  const isPositive = mode === 'habits' ? avgValue >= 50 : metricsData[metricsData.length - 1]?.value >= 0;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className={`sm:col-span-1 lg:col-span-1 glass-card rounded-[2rem] sm:rounded-[2.5rem] p-5 sm:p-6 border-white/5 relative overflow-hidden flex flex-col min-h-[320px] sm:min-h-[340px] group transition-colors duration-500 ${mode === 'wealth' ? 'bg-emerald-950/20' : ''}`}
+    >
+      <div className={`absolute inset-0 bg-gradient-to-b ${mode === 'wealth' ? 'from-emerald-400/5' : 'from-emerald-500/5'} to-transparent pointer-events-none`} />
+      
+      <div className="relative z-10 flex flex-col h-full">
+        {/* Header Controls */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setMode('habits')}
+              className={`p-2 rounded-lg transition-all ${mode === 'habits' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-stardust/20'}`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+            </button>
+            <button 
+              onClick={() => setMode('wealth')}
+              className={`p-2 rounded-lg transition-all ${mode === 'wealth' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-stardust/20'}`}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+            </button>
+            <h3 className="text-[9px] font-black uppercase tracking-[0.2em] text-stardust/40 ml-1">
+              {mode === 'habits' ? 'Rituals' : 'Flow'}
+            </h3>
+          </div>
+          
+          <div className="flex bg-white/5 p-1 rounded-xl">
+            {(['week', 'month', 'year'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTimeframe(t)}
+                className={`px-2 py-1 rounded-lg text-[7px] font-black uppercase tracking-widest transition-all ${timeframe === t ? 'bg-white text-cosmic-black shadow-lg' : 'text-stardust/30 hover:text-white'}`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Main Value Display */}
+        <div className="mb-4">
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-black italic text-white tracking-tighter leading-none">
+              {mode === 'habits' ? `${metricsData[metricsData.length - 1]?.value}%` : `$${Math.abs(metricsData[metricsData.length - 1]?.value).toLocaleString()}`}
+            </span>
+            <span className={`${isPositive ? 'text-emerald-400' : 'text-red-400'} text-[8px] font-black uppercase tracking-widest`}>
+              {mode === 'habits' ? 'Current' : metricsData[metricsData.length - 1]?.value >= 0 ? 'Net Abundance' : 'Net Scarcity'}
+            </span>
+          </div>
+        </div>
+
+        {/* Chart Area */}
+        <div className="flex-grow min-h-[140px] relative">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={metricsData}>
+              <defs>
+                <linearGradient id="dynamicColor" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={isPositive ? "#10b981" : "#ef4444"} stopOpacity={0.4}/>
+                  <stop offset="95%" stopColor={isPositive ? "#10b981" : "#ef4444"} stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <Tooltip 
+                contentStyle={{ backgroundColor: '#0b0118', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '9px', fontWeight: 900 }}
+                itemStyle={{ color: isPositive ? '#10b981' : '#ef4444' }}
+                formatter={(val: number) => mode === 'habits' ? `${val}%` : `$${val.toLocaleString()}`}
+                cursor={{ stroke: isPositive ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)', strokeWidth: 2 }}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="value" 
+                stroke={isPositive ? "#10b981" : "#ef4444"} 
+                strokeWidth={3} 
+                fillOpacity={1} 
+                fill="url(#dynamicColor)" 
+                animationDuration={isMobile ? 0 : 1500}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Bottom Status Grid */}
+        <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
+          <div className="flex flex-col">
+            <span className="text-[7px] font-black uppercase tracking-widest text-stardust/20">System Status</span>
+            <span className={`text-[10px] font-black italic ${isPositive ? 'text-white' : 'text-red-400/60'}`}>
+              {mode === 'habits' ? 'Quantum High' : 'Liquidity Synced'}
+            </span>
+          </div>
+          <div className="flex gap-1">
+            {[...Array(5)].map((_, i) => (
+              <div 
+                key={i} 
+                className={`w-1.5 h-3 rounded-full ${i < (mode === 'habits' ? avgValue / 20 : 4) ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-white/5'}`} 
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+});
+
 const DashboardView = memo(({ 
   habits, 
+  habitLogs,
   desires, 
   visionItems, 
   transactions,
@@ -1590,9 +1896,12 @@ const DashboardView = memo(({
   setFocusIndex,
   toggleHabit,
   setView,
-  addTransaction
+  addTransaction,
+  isMobile,
+  tier
 }: { 
   habits: Habit[], 
+  habitLogs: HabitLog[],
   desires: Desire[], 
   visionItems: VisionItem[],
   transactions: Transaction[],
@@ -1600,9 +1909,11 @@ const DashboardView = memo(({
   setFocusIndex: (i: number) => void,
   toggleHabit: (id: string, e?: MouseEvent) => void,
   setView: (v: View) => void,
-  addTransaction: (type: 'income' | 'expense', amount: number, label: string, category: string) => void
+  addTransaction: (type: 'income' | 'expense', amount: number, label: string, category: string) => void,
+  isMobile: boolean,
+  tier: string
 }) => {
-  const progress = (habits.filter(h => h.completed).length / habits.length) * 100;
+  const progress = habits.length > 0 ? (habits.filter(h => h.completed).length / habits.length) * 100 : 0;
   const activeDesires = desires.filter(d => !d.isAchieved);
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((acc, curr) => acc + curr.amount, 0);
   const totalExpense = transactions.filter(t => t.type === 'expense').reduce((acc, curr) => acc + curr.amount, 0);
@@ -1636,10 +1947,9 @@ const DashboardView = memo(({
     return timeA - timeB; // Oldest first for layering
   });
 
-  const displayVision = sortedVisionItems;
+  const displayVision = useMemo(() => isMobile ? sortedVisionItems.slice(-4) : sortedVisionItems, [sortedVisionItems, isMobile]);
 
-  const getPosition = (index: number, total: number) => {
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const getPosition = (index: number) => {
     // Distribute images roughly in a 3x3 grid with overlaps
     const cols = isMobile ? 2 : 4;
     const row = Math.floor(index / cols);
@@ -1649,8 +1959,7 @@ const DashboardView = memo(({
     const left = (col * (100 / cols)) + (Math.sin(index * 2) * 5);
     const top = (row * 30) + (Math.cos(index * 3) * 5);
     
-    const scale = 1.1 - (index * 0.02); // Newer items slightly smaller or larger? 
-    // Usually on a real board, pinning on top means it might be smaller or overlap.
+    const scale = 1.1 - (index * 0.02); 
     const rotation = (Math.sin(index * 789.123) * 15);
     
     return {
@@ -1665,14 +1974,14 @@ const DashboardView = memo(({
   const currentFocus = activeDesires[focusIndex % activeDesires.length] || desires[0];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 auto-rows-min pb-12 max-w-7xl mx-auto relative z-10">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-4 lg:gap-4 auto-rows-min pb-24 lg:pb-12 max-w-7xl mx-auto relative z-10">
       {/* 1. Alignment Core */}
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        whileHover={{ scale: 1.005, boxShadow: '0 30px 60px -12px rgba(16,185,129,0.2)' }}
+        whileHover={{ scale: 1.002 }}
         onClick={() => setView('habits')}
-        className="md:col-span-2 lg:col-span-2 bg-[#022c22]/80 backdrop-blur-2xl rounded-[2.5rem] p-8 lg:p-10 border border-emerald-500/20 shadow-2xl relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[340px]"
+        className="sm:col-span-2 lg:col-span-2 bg-[#022c22]/80 backdrop-blur-2xl rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-8 lg:p-10 border border-emerald-500/20 shadow-2xl relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[280px] sm:min-h-[320px]"
       >
         <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent opacity-30" />
         <div className="relative z-10 flex flex-col h-full">
@@ -1714,22 +2023,25 @@ const DashboardView = memo(({
         </div>
       </motion.div>
 
-      {/* 2. Focus Area */}
+      {/* 2. Sacred Metrics (Visual Habit Tracking) */}
+      <SacredMetrics habits={habits} logs={habitLogs} transactions={transactions} isMobile={isMobile} />
+
+      {/* 3. Focus Area (Scripture Notebook Style) */}
       <motion.div 
-        initial={{ opacity: 0, scale: 0.98 }}
+        initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.1 }}
-        whileHover={{ y: -5, boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}
+        whileHover={isMobile ? undefined : { y: -5, boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}
         onClick={() => setFocusIndex(focusIndex + 1)}
-        className="md:col-span-1 lg:col-span-1 bg-[#fbfbf2] rounded-[2.5rem] p-8 border border-black/5 shadow-xl relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[340px]"
+        className="sm:col-span-1 lg:col-span-1 scripture-card rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-8 pb-10 border border-amber-900/10 relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[320px] sm:min-h-[340px] scripture-margin transform-gpu"
       >
-        <div className="absolute inset-0 opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/pinstripe-dark.png')]" />
-        <div className="relative z-10 flex flex-col h-full">
-          <div className="flex items-center justify-between mb-10">
-            <div className="p-2.5 bg-black/5 rounded-xl flex items-center justify-center text-black/30 group-hover:bg-black group-hover:text-white transition-all duration-300">
+        <div className="absolute inset-0 bg-gradient-to-tr from-amber-900/5 to-transparent pointer-events-none" />
+        <div className="relative z-10 flex flex-col h-full pl-10 lg:pl-12">
+          <div className="flex items-center justify-between mb-8">
+            <div className="p-2.5 bg-amber-900/5 rounded-xl flex items-center justify-center text-amber-900/30 group-hover:bg-amber-900 group-hover:text-white transition-all duration-300">
               <Target className="w-5 h-5" />
             </div>
-            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-black/20 italic">Singularity</span>
+            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-amber-900/20 italic">The Path</span>
           </div>
 
           <div className="flex-grow flex flex-col justify-center">
@@ -1741,78 +2053,19 @@ const DashboardView = memo(({
                 exit={{ opacity: 0, x: -20 }}
                 className="mb-8"
               >
-                <h4 className="text-3xl font-black text-black leading-[0.9] tracking-tighter italic mb-4 uppercase">
-                  {currentFocus?.text || 'Project Intent'}
+                <h4 className="text-3xl font-black text-red-900 leading-[0.9] tracking-tighter italic mb-5 uppercase font-serif">
+                  {currentFocus?.text || 'Destiny Intent'}
                 </h4>
-                <div className="inline-block px-3 py-1 bg-black/10 rounded-md text-[8px] font-black uppercase tracking-widest text-black/60 italic">
-                  {currentFocus?.category || 'Universal'}
+                <div className="inline-block px-3 py-1 bg-amber-900/5 border border-amber-900/10 rounded-md text-[8px] font-black uppercase tracking-widest text-amber-950/40 italic">
+                  {currentFocus?.category || 'Legacy'}
                 </div>
               </motion.div>
             </AnimatePresence>
           </div>
 
-          <div className="relative z-10 pt-6 border-t border-black/5 flex items-center justify-between mt-auto">
-             <span className="text-[8px] font-black uppercase tracking-[0.2em] text-black/20">Singularities: <span className="text-black/60 ml-1">{activeDesires.length}</span></span>
-             <ChevronRight className="w-4 h-4 text-black/10 group-hover:text-black transition-colors" />
-          </div>
-        </div>
-      </motion.div>
-
-      {/* 3. Wealth Flow */}
-      <motion.div 
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 0.2 }}
-        whileHover={{ scale: 1.01 }}
-        className="md:col-span-1 lg:col-span-1 bg-[#064e3b]/95 backdrop-blur-2xl rounded-[2.5rem] p-8 border border-white/10 shadow-2xl relative overflow-hidden group flex flex-col justify-between min-h-[340px]"
-      >
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 blur-3xl rounded-full" />
-        <div className="relative z-10 h-full flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-8">
-            <div onClick={() => setView('wealth')} className="cursor-pointer">
-              <h3 className="text-[9px] font-black uppercase tracking-[0.3em] text-stardust/40 mb-3 flex items-center gap-2">
-                Wealth Flow <TrendingUp className="w-3 h-3 text-emerald-400" />
-              </h3>
-              <div className="flex flex-col">
-                <span className="text-3xl font-black italic text-white tracking-tighter mb-1">${Math.abs(netWealth).toLocaleString()}</span>
-                <span className={`text-[8px] font-black uppercase italic tracking-widest ${netWealth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {netWealth >= 0 ? 'Net Positive' : 'Quantum Dept'}
-                </span>
-              </div>
-            </div>
-            <button 
-              onClick={(e) => { e.stopPropagation(); setView('wealth'); }}
-              className="p-3 bg-white/5 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all border border-white/5 shadow-xl"
-            >
-              <Plus className="w-4 h-4 shadow-sm" />
-            </button>
-          </div>
-
-          <div className="h-10 mb-8">
-            <svg viewBox="0 0 100 20" className="w-full h-full" preserveAspectRatio="none">
-              <motion.path 
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 2 }}
-                d={sparklinePath} 
-                fill="none" 
-                stroke={netWealth >= 0 ? "#10b981" : "#ef4444"}
-                strokeWidth="2.5" 
-                strokeLinecap="round"
-                className="drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]"
-              />
-            </svg>
-          </div>
-
-          <div className="flex items-center justify-between pt-6 border-t border-white/5">
-            <div className="flex -space-x-2">
-              {transactions.slice(-3).map((t, idx) => (
-                <div key={idx} className={`w-7 h-7 rounded-xl border-2 border-[#064e3b] ${t.type === 'income' ? 'bg-emerald-500' : 'bg-red-500'} flex items-center justify-center text-[8px] font-black text-white`} style={{ zIndex: 10 - idx }}>
-                  {t.type === 'income' ? '+' : '-'}
-                </div>
-              ))}
-            </div>
-            <span className="text-[8px] font-black uppercase tracking-widest text-stardust/20 italic">Liquidity Sync</span>
+          <div className="relative z-10 pt-6 border-t border-amber-900/10 flex items-center justify-between mt-auto">
+             <span className="text-[8px] font-black uppercase tracking-[0.2em] text-amber-900/30">Singularities: <span className="text-amber-900/60 ml-1">{activeDesires.length}</span></span>
+             <ChevronRight className="w-4 h-4 text-amber-900/20 group-hover:text-amber-900 transition-colors" />
           </div>
         </div>
       </motion.div>
@@ -1876,9 +2129,9 @@ const DashboardView = memo(({
           </button>
         </div>
 
-        <div className="absolute inset-0 p-12 pt-28">
-           {displayVision.map((item, idx) => {
-            const pos = getPosition(idx, displayVision.length);
+        <div className="absolute inset-0 p-6 sm:p-12 pt-28">
+          {displayVision.map((item, idx) => {
+            const pos = getPosition(idx);
             return (
               <motion.div 
                 key={item.id} 
@@ -1891,7 +2144,7 @@ const DashboardView = memo(({
                   rotate: pos.rotate,
                   zIndex: pos.zIndex
                 }}
-                whileHover={{ scale: 1.3, zIndex: 100, rotate: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }}
+                whileHover={isMobile ? undefined : { scale: 1.3, zIndex: 100, rotate: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }}
                 className="absolute w-32 h-32 md:w-48 md:h-48 group/vision cursor-pointer"
               >
                 <div className="w-full h-full p-2.5 bg-white/10 backdrop-blur-3xl border border-white/20 rounded-[2rem] shadow-2xl relative overflow-hidden group-hover/vision:border-emerald-500/50 transition-all duration-500 shadow-black/60">
@@ -1919,12 +2172,14 @@ const ManifestView = memo(({
   desires, 
   addDesire, 
   removeDesire, 
-  toggleDesire 
+  toggleDesire,
+  isMobile
 }: { 
   desires: Desire[], 
   addDesire: (t: string) => void, 
   removeDesire: (id: string) => void,
-  toggleDesire: (id: string) => void 
+  toggleDesire: (id: string) => void,
+  isMobile: boolean
 }) => {
   const [newDesire, setNewDesire] = useState('');
   
@@ -1944,14 +2199,14 @@ const ManifestView = memo(({
             value={newDesire}
             onChange={(e) => setNewDesire(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-            placeholder="I am so grateful now that..."
+            placeholder="Script your desire here..."
             className="flex-grow bg-white/5 border border-white/10 rounded-2xl px-6 py-4 focus:ring-2 focus:ring-white/30 outline-none font-bold text-stardust placeholder:text-stardust/20"
           />
           <motion.button 
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleAdd}
-            className="bg-white text-cosmic-black px-8 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-xl shadow-white/20"
+            className="bg-white text-cosmic-black px-8 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-xl shadow-white/20 active:scale-95"
           >
             Declare <ArrowRight className="w-4 h-4" />
           </motion.button>
@@ -1962,10 +2217,10 @@ const ManifestView = memo(({
         {desires.map(desire => (
           <motion.div 
             key={desire.id} 
-            whileHover={{ scale: 1.005, x: 2 }}
+            whileHover={isMobile ? undefined : { scale: 1.005, x: 2 }}
             whileTap={{ scale: 0.995 }}
             onClick={() => toggleDesire(desire.id)}
-            className={`p-6 lg:p-10 rounded-sm transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group cursor-pointer shadow-[5px_5px_15px_rgba(0,0,0,0.2)] border-b-2 border-r-2 border-black/10 relative overflow-hidden ${desire.isAchieved ? 'opacity-50 grayscale bg-[#e4d4ac]' : 'bg-[#f4e4bc]'}`}
+            className={`p-6 lg:p-10 rounded-sm transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group cursor-pointer shadow-[5px_5px_15px_rgba(0,0,0,0.2)] border-b-2 border-r-2 border-black/10 relative overflow-hidden transform-gpu ${desire.isAchieved ? 'opacity-50 grayscale bg-[#e4d4ac]' : 'bg-[#f4e4bc]'}`}
             style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/cream-paper.png')` }}
           >
             <div className="flex items-center gap-6 relative z-10">
@@ -2244,11 +2499,13 @@ const VisionBoardView = memo(({ items, addItem, removeItem }: { items: VisionIte
 const WealthView = memo(({ 
   transactions, 
   addTransaction, 
-  removeTransaction 
+  removeTransaction,
+  isMobile
 }: { 
   transactions: Transaction[], 
   addTransaction: (type: 'income' | 'expense', amount: number, label: string, category: string) => void,
-  removeTransaction: (id: string) => void
+  removeTransaction: (id: string) => void,
+  isMobile: boolean
 }) => {
   const [showAdd, setShowAdd] = useState(false);
   const [type, setType] = useState<'income' | 'expense'>('expense');
@@ -2300,26 +2557,26 @@ const WealthView = memo(({
 
   return (
     <div className="max-w-5xl mx-auto px-4 lg:px-0">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-12">
         <motion.div 
-          whileHover={{ scale: 1.02 }}
-          className="bg-emerald-500/10 border border-emerald-500/20 p-8 rounded-[2.5rem] flex flex-col justify-between"
+          whileHover={{ y: -5 }}
+          className="bg-emerald-500/10 border border-emerald-500/20 p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] flex flex-col justify-between"
         >
           <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-2">Inflow Frequency</p>
           <p className="text-3xl font-black text-white italic">+${totalIncome.toLocaleString()}</p>
         </motion.div>
         
         <motion.div 
-          whileHover={{ scale: 1.02 }}
-          className="bg-red-500/10 border border-red-500/20 p-8 rounded-[2.5rem] flex flex-col justify-between"
+          whileHover={{ y: -5 }}
+          className="bg-red-500/10 border border-red-500/20 p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] flex flex-col justify-between"
         >
           <p className="text-[10px] font-black uppercase tracking-widest text-red-400 mb-2">Outflow Velocity</p>
           <p className="text-3xl font-black text-white italic">-${totalExpense.toLocaleString()}</p>
         </motion.div>
 
         <motion.div 
-          whileHover={{ scale: 1.02 }}
-          className="bg-white/10 border border-white/20 p-8 rounded-[2.5rem] flex flex-col justify-between"
+          whileHover={{ y: -5 }}
+          className="bg-white/10 border border-white/20 p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] flex flex-col justify-between"
         >
           <p className="text-[10px] font-black uppercase tracking-widest text-stardust/40 mb-2">Net Abundance</p>
           <p className={`text-3xl font-black italic ${flow >= 0 ? 'text-white' : 'text-red-400'}`}>
@@ -2561,7 +2818,9 @@ const HabitsView = memo(({
   removeHabit, 
   toggleHabit,
   diaryEntries,
-  addDiaryEntry
+  addDiaryEntry,
+  isMobile,
+  tier
 }: { 
   habits: Habit[], 
   habitLogs: HabitLog[],
@@ -2570,7 +2829,9 @@ const HabitsView = memo(({
   removeHabit: (id: string) => void,
   toggleHabit: (id: string, e?: MouseEvent) => void,
   diaryEntries: DiaryEntry[],
-  addDiaryEntry: (c: string, m: 'free' | '369' | '555') => void
+  addDiaryEntry: (c: string, m: 'free' | '369' | '555') => void,
+  isMobile: boolean,
+  tier: string
 }) => {
   const [tab, setTab] = useState<'rituals' | 'diary'>('rituals');
   const [isAdding, setIsAdding] = useState(false);
@@ -2578,6 +2839,14 @@ const HabitsView = memo(({
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [reminder, setReminder] = useState('');
+
+  const handleAddRitual = () => {
+    if (tier === 'Novice' && habits.length >= 3) {
+      alert("FREE TIER LIMIT: Novice seekers are limited to 3 active rituals. Upgrade to Adept or Ascendant for unlimited manifestation capacity.");
+      return;
+    }
+    setIsAdding(true);
+  };
 
   const handleSave = () => {
     if (!name) return;
@@ -2643,7 +2912,7 @@ const HabitsView = memo(({
                   <p className="text-stardust/40 font-medium">Small actions lead to massive shifts. Consistently perform these to align your vibration.</p>
                 </div>
                 <button 
-                  onClick={() => setIsAdding(true)}
+                  onClick={handleAddRitual}
                   className="w-full sm:w-auto bg-white text-cosmic-black px-6 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:scale-105 transition-all shadow-xl shadow-white/20 active:scale-95"
                 >
                   <Plus className="w-5 h-5" /> New Ritual
@@ -2844,8 +3113,8 @@ const HabitHistory = ({ habit, logs }: { habit: Habit, logs: HabitLog[] }) => {
               key={log.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="p-6 lg:p-8 rounded-[2.5rem] bg-white/5 border border-white/5 flex items-center justify-between"
+              transition={{ delay: Math.min(1, i * 0.05) }}
+              className="p-6 lg:p-8 rounded-[2.5rem] bg-white/5 border border-white/5 flex items-center justify-between transform-gpu"
             >
               <div className="flex items-center gap-6">
                 <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20">
@@ -2995,8 +3264,33 @@ const SacredJournaling = ({ entries, onSave }: { entries: DiaryEntry[], onSave: 
   );
 };
 
-const AcademyView = memo(() => {
+const AcademyView = memo(({ tier }: { tier: string }) => {
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
+
+  if (tier !== 'Ascendant') {
+    return (
+      <div className="max-w-4xl mx-auto px-6 py-20 lg:py-40 flex flex-col items-center text-center">
+        <div className="w-24 h-24 bg-white/5 border border-white/10 rounded-full flex items-center justify-center text-stardust/20 mb-10 relative">
+          <Lock className="w-10 h-10" />
+          <motion.div 
+            animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }}
+            transition={{ duration: 4, repeat: Infinity }}
+            className="absolute inset-0 bg-emerald-500/10 blur-2xl rounded-full" 
+          />
+        </div>
+        <h3 className="font-serif text-4xl lg:text-6xl font-black mb-6 text-white italic">The Archive is Sealed.</h3>
+        <p className="text-stardust/40 text-lg lg:text-xl font-medium leading-relaxed font-serif max-w-xl mb-12">
+          Only those who have reached the <span className="text-emerald-400">Ascendant</span> frequency may enter these sacred manuscripts. Your current vibration is set to <span className="uppercase tracking-widest text-white">{tier}</span>.
+        </p>
+        <button 
+          onClick={() => (window as any).dispatchEvent(new CustomEvent('changeView', { detail: 'pricing' }))}
+          className="px-10 py-5 bg-white text-black font-black uppercase tracking-[0.2em] text-xs skew-x-[-10deg] hover:bg-emerald-400 transition-colors shadow-[10px_10px_0_rgba(255,255,255,0.1)] hover:shadow-[10px_10px_0_rgba(52,211,153,0.2)] active:translate-y-1 active:translate-x-1 active:shadow-none"
+        >
+          Ascend Now
+        </button>
+      </div>
+    );
+  }
 
   const lessons: (Lesson & { fullStep?: string[]; science?: string; image: string })[] = [
     { 
@@ -3190,7 +3484,7 @@ const AcademyView = memo(() => {
               <div className="flex flex-col justify-center">
                  <h4 className="font-serif text-3xl font-black text-white mb-4 group-hover:italic transition-all">{lesson.title}</h4>
                  <p className="text-stardust/30 font-medium font-serif leading-relaxed line-clamp-3 text-sm lg:text-base border-l-2 border-white/5 pl-4">{lesson.description}</p>
-                 <button className="mt-6 flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-white/40 group-hover:text-white transition-colors">
+                 <button onClick={() => setSelectedLesson(lesson)} className="mt-6 flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-white/40 group-hover:text-white transition-colors">
                     <Play className="w-3 h-3 fill-current" /> Open Volume
                  </button>
               </div>
@@ -3215,16 +3509,36 @@ const PlaceholderView = ({ title, description }: { title: string, description: s
   </div>
 );
 
-const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void, user: User | null, tier: string }) => {
+const PricingView = memo(({ setView, user, tier, isMobile }: { setView: (v: View) => void, user: User | null, tier: string, isMobile: boolean }) => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'lifetime'>('monthly');
   
+  // Detect if user is from India
+  const isIndianUser = useMemo(() => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const lang = navigator.language || (navigator as any).userLanguage;
+      return tz === 'Asia/Kolkata' || lang.includes('IN') || lang.includes('hi');
+    } catch (e) {
+      return false;
+    }
+  }, []);
+
+  const currencySymbol = isIndianUser ? '₹' : '$';
+
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
+      if ((window as any).Razorpay) {
+        resolve(true);
+        return;
+      }
       const script = document.createElement("script");
       script.src = "https://checkout.razorpay.com/v1/checkout.js";
       script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
+      script.onerror = () => {
+        console.error("Razorpay SDK could not be loaded.");
+        resolve(false);
+      };
       document.body.appendChild(script);
     });
   };
@@ -3232,16 +3546,35 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
   const getInrPrice = (planName: string) => {
     if (planName === 'Novice') return 0;
     if (planName === 'Adept') {
-      if (billingCycle === 'monthly') return 499;
-      if (billingCycle === 'yearly') return 2999;
-      return 6999;
+      if (billingCycle === 'monthly') return 299;
+      if (billingCycle === 'yearly') return 1999;
+      return 4999;
     }
     if (planName === 'Ascendant') {
-      if (billingCycle === 'monthly') return 799;
-      if (billingCycle === 'yearly') return 4999;
-      return 9999;
+      if (billingCycle === 'monthly') return 699;
+      if (billingCycle === 'yearly') return 3999;
+      return 8999;
     }
     return 0;
+  };
+
+  const getUsdPrice = (planName: string) => {
+    if (planName === 'Novice') return '0';
+    if (planName === 'Adept') {
+      if (billingCycle === 'monthly') return '5.99';
+      if (billingCycle === 'yearly') return '35.99';
+      return '88.88';
+    }
+    if (planName === 'Ascendant') {
+      if (billingCycle === 'monthly') return '9.99';
+      if (billingCycle === 'yearly') return '59.99';
+      return '149.99';
+    }
+    return '0';
+  };
+
+  const getPrice = (planName: string) => {
+    return isIndianUser ? getInrPrice(planName).toString() : getUsdPrice(planName);
   };
 
   const handleRazorpayPayment = async (plan: any) => {
@@ -3257,8 +3590,14 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
       return;
     }
 
-    if (!import.meta.env.VITE_RAZORPAY_KEY_ID) {
-      alert("CRITICAL: Razorpay API Key (VITE_RAZORPAY_KEY_ID) is missing. Please add it to the environment variables in the Settings menu.");
+    // Try multiple possible environment variable names
+    const rzpKey = 
+      import.meta.env.VITE_RAZORPAY_KEY_ID || 
+      import.meta.env.VITE_RAZORPAY_KEY ||
+      import.meta.env.VITE_RAZORPAY_ID;
+
+    if (!rzpKey || rzpKey === "your_razorpay_key_id_here") {
+      alert("CRITICAL: Razorpay Key ID is missing in the frontend. \n\nIMPORTANT: You must add a variable named 'VITE_RAZORPAY_KEY_ID' (must start with VITE_) in Settings -> Environment Variables so the payment window can see it.");
       return;
     }
 
@@ -3278,12 +3617,15 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
       const orderData = await response.json();
 
       if (orderData.error) {
-        alert(orderData.error);
+        let msg = orderData.error;
+        if (orderData.details) msg += `\n\nDetails: ${orderData.details}`;
+        if (orderData.debug_id_prefix) msg += `\n\nID Check: ${orderData.debug_id_prefix} (Length: ${orderData.debug_id_len})`;
+        alert(msg);
         return;
       }
 
       const options = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+        key: rzpKey,
         amount: orderData.amount,
         currency: orderData.currency,
         name: "Vibe OS",
@@ -3305,9 +3647,14 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
             });
             const verifyData = await verifyRes.json();
             if (verifyData.status === "ok") {
-              // Update user tier in Firestore
+              const expiry = new Date();
+              if (billingCycle === 'monthly') expiry.setMonth(expiry.getMonth() + 1);
+              else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
+              else expiry.setFullYear(expiry.getFullYear() + 100); 
+
               await updateDoc(doc(db, 'users', user.uid), {
                 tier: plan.name,
+                subscriptionExpiry: Timestamp.fromDate(expiry),
                 updatedAt: serverTimestamp()
               });
               
@@ -3329,9 +3676,21 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
         theme: {
           color: "#000000",
         },
+        modal: {
+          ondismiss: function() {
+            console.log("Razorpay modal closed by user or automatically.");
+          }
+        }
       };
 
       const paymentObject = new (window as any).Razorpay(options);
+      
+      paymentObject.on('payment.failed', function (response: any) {
+        console.error("Payment failed reason:", response.error.reason);
+        console.error("Payment failed description:", response.error.description);
+        alert(`Payment failed: ${response.error.description}`);
+      });
+
       paymentObject.open();
     } catch (e) {
       console.error("Payment error:", e);
@@ -3349,8 +3708,14 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
 
     setIsVerifying(true);
     try {
+      const expiry = new Date();
+      if (billingCycle === 'monthly') expiry.setMonth(expiry.getMonth() + 1);
+      else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
+      else expiry.setFullYear(expiry.getFullYear() + 100);
+
       await updateDoc(doc(db, 'users', user.uid), {
         tier: plan.name,
+        subscriptionExpiry: Timestamp.fromDate(expiry),
         updatedAt: serverTimestamp()
       });
       alert(`Simulation Successful! Your frequency has ascended to ${plan.name} (Preview Mode).`);
@@ -3361,21 +3726,6 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
     } finally {
       setIsVerifying(false);
     }
-  };
-
-  const getPrice = (planName: string) => {
-    if (planName === 'Novice') return '0';
-    if (planName === 'Adept') {
-      if (billingCycle === 'monthly') return '5.99';
-      if (billingCycle === 'yearly') return '35.99';
-      return '88.88';
-    }
-    if (planName === 'Ascendant') {
-      if (billingCycle === 'monthly') return '9.99';
-      if (billingCycle === 'yearly') return '59.99';
-      return '149.99';
-    }
-    return '0';
   };
 
   const plans = [
@@ -3509,14 +3859,14 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
                 </h4>
                 <div className="flex flex-col">
                   <div className="flex items-baseline gap-1">
-                    <span className="text-5xl lg:text-6xl font-black text-white italic tracking-tighter leading-none">${plan.price}</span>
+                    <span className="text-5xl lg:text-6xl font-black text-white italic tracking-tighter leading-none">{currencySymbol}{plan.price}</span>
                     <span className="text-stardust/20 font-bold text-[10px] uppercase tracking-widest">
                        {billingCycle === 'monthly' ? '/ mo' : billingCycle === 'yearly' ? '/ yr' : 'once'}
                     </span>
                   </div>
                   {billingCycle !== 'monthly' && plan.name !== 'Novice' && (
                     <div className="mt-2 flex items-center gap-2">
-                       <span className="text-[14px] font-black text-emerald-400 italic">${effectivePrice}</span>
+                       <span className="text-[14px] font-black text-emerald-400 italic">{currencySymbol}{effectivePrice}</span>
                        <span className="text-[8px] font-black uppercase tracking-widest text-stardust/30">Effective per month</span>
                     </div>
                   )}
@@ -3552,7 +3902,10 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
                       whileTap={{ scale: 0.98 }}
                       disabled={isVerifying}
                       onClick={() => {
-                        if (import.meta.env.VITE_RAZORPAY_KEY_ID) {
+                        const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+                        const isConfigured = rzpKey && rzpKey !== "your_razorpay_key_id_here";
+                        
+                        if (isConfigured) {
                           handleRazorpayPayment(plan);
                         } else {
                           handleSimulateUpgrade(plan);
@@ -3680,7 +4033,10 @@ const PricingView = memo(({ setView, user, tier }: { setView: (v: View) => void,
         <div className="relative z-10 flex flex-col items-center">
           <h3 className="text-xl font-black tracking-tighter text-white mb-2 italic uppercase">Enterprise?</h3>
           <p className="text-stardust/40 font-medium text-[10px] max-w-md mb-6 uppercase tracking-widest leading-loose">Custom vibrational solutions for organizations, lineages, and institutions.</p>
-          <button className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.3em] text-white/60 hover:text-white transition-all group-hover:gap-4 italic">
+          <button 
+            onClick={() => window.location.href = 'mailto:architect@vibe-os.digital?subject=Enterprise%20Vibration%20Consultation'}
+            className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.3em] text-white/60 hover:text-white transition-all group-hover:gap-4 italic"
+          >
             Contact Architect <ArrowRight className="w-4 h-4 text-emerald-500" />
           </button>
         </div>
