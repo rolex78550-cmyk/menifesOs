@@ -113,6 +113,7 @@ import {
   Clock,
   TrendingDown
 } from 'lucide-react';
+import { StreakCalendar } from './components/StreakCalendar';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { 
   AreaChart, 
@@ -562,12 +563,24 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [habits, setHabits] = useState<Habit[]>([]);
 
-  // Check if subscription is still valid
+  // Check if subscription is still valid or within free trial
   const isTierActive = useMemo(() => {
     if (!userProfile) return false;
-    if (userProfile.tier === 'Novice') return true;
+    if (userProfile.tier !== 'Novice') return true; // Already subscribed
+
+    // Check for 7-day trial
+    if (user && user.metadata && user.metadata.creationTime) {
+      const creationTime = new Date(user.metadata.creationTime).getTime();
+      const now = new Date().getTime();
+      const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+      if (now - creationTime < sevenDaysInMs) {
+        return true; 
+      }
+    }
+    
     if (!userProfile.subscriptionExpiry) return false;
     
+    // ... (Keep expiry logic)
     const now = new Date().getTime();
     let expiryTime = 0;
     
@@ -580,7 +593,8 @@ export default function App() {
     }
     
     return now < expiryTime;
-  }, [userProfile]);
+  }, [userProfile, user]);
+
 
   const activeTier = isTierActive ? (userProfile?.tier || 'Novice') : 'Novice';
   const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
@@ -1131,12 +1145,14 @@ export default function App() {
           addTransaction={addTransaction}
           isMobile={isMobile}
           tier={activeTier}
+          activeHz={activeHz}
+          onToggle={toggleFrequency}
         />
       );
       case 'manifest': return <ManifestView desires={desires} addDesire={addDesire} removeDesire={removeDesire} toggleDesire={toggleDesire} isMobile={isMobile} />;
       case 'habits': return <HabitsView habits={habits} habitLogs={habitLogs} addHabit={addHabit} updateHabit={updateHabit} removeHabit={removeHabit} toggleHabit={toggleHabit} diaryEntries={diaryEntries} addDiaryEntry={addDiaryEntry} isMobile={isMobile} tier={activeTier} />;
       case 'vision': return <VisionBoardView items={visionItems} addItem={addVisionItem} removeItem={removeVisionItem} />;
-      case 'wealth': return <WealthView transactions={transactions} addTransaction={addTransaction} removeTransaction={removeTransaction} isMobile={isMobile} />;
+      case 'wealth': return <WealthView transactions={transactions} addTransaction={addTransaction} removeTransaction={removeTransaction} isMobile={isMobile} setView={setView} tier={activeTier} />;
       case 'sonic': return <SonicView activeHz={activeHz} onToggle={toggleFrequency} isMobile={isMobile} />;
       case 'academy': return <AcademyView tier={activeTier} />;
       case 'pricing': return <PricingView setView={setView} user={user} tier={activeTier} isMobile={isMobile} />;
@@ -1163,24 +1179,23 @@ export default function App() {
       </AnimatePresence>
 
       <main ref={mainContainerRef} className="flex-grow lg:pl-72 p-4 lg:p-5 mb-28 lg:mb-0 min-h-screen lg:h-screen overflow-y-auto lg:overflow-y-auto relative z-10 no-scrollbar overscroll-behavior-contain touch-pan-y">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 lg:mb-8">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-10 lg:mb-16 pb-8 border-b border-white/5">
           <div className="w-full lg:w-auto flex items-center justify-between md:block">
-            <div>
-              <div className="flex items-center gap-2 mb-1 lg:mb-2">
-                <div className="lg:hidden w-6 h-6 bg-white rounded-lg flex items-center justify-center">
-                  <Infinity className="w-4 h-4 text-cosmic-black" />
+            <div className="space-y-1">
+              <div className="flex items-center gap-3">
+                <div className="lg:hidden w-8 h-8 bg-white/10 backdrop-blur-xl rounded-xl flex items-center justify-center border border-white/10">
+                  <Infinity className="w-4 h-4 text-white" />
                 </div>
-                <span className="lg:hidden font-black text-xs tracking-tighter text-stardust uppercase italic">Vibe</span>
-                <h1 className="text-[10px] lg:text-xs font-black uppercase tracking-[0.2em] text-white/60">
+                <h1 className="text-[10px] lg:text-[11px] font-black uppercase tracking-[0.3em] text-white/40">
                   {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                 </h1>
               </div>
-              <h2 className="text-2xl lg:text-4xl font-black capitalize tracking-tight text-white drop-shadow-md flex items-center gap-2">
+              <h2 className="text-3xl lg:text-5xl font-black capitalize tracking-tighter text-white drop-shadow-xl flex items-center gap-4 italic">
                 {view}
-                <span className="hidden lg:inline text-[10px] font-black uppercase tracking-[0.4em] text-white/10 ml-4 pt-1 border-l border-white/5 pl-4">Vibe OS</span>
+                <span className="hidden lg:inline text-[10px] font-black uppercase tracking-[0.5em] text-emerald-500/50 pt-1.5 opacity-80 decoration-emerald-500 underline underline-offset-8">Vibe OS</span>
               </h2>
             </div>
-            <div className="md:hidden w-10 h-10 bg-white/10 rounded-2xl overflow-hidden border border-white/10 ring-2 ring-white/10 shrink-0" onClick={logout}>
+            <div className="md:hidden w-11 h-11 bg-white/5 rounded-2xl overflow-hidden border border-white/10 shrink-0 shadow-lg" onClick={logout}>
                <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} alt="Avatar" referrerPolicy="no-referrer" />
             </div>
           </div>
@@ -1620,6 +1635,210 @@ const PrivacyView = ({ setView }: { setView: (v: View) => void }) => (
   </div>
 );
 
+const SolfeggioVisualizer = ({ activeHz, onToggle }: { activeHz: number | null, onToggle?: (hz: number) => void }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationId: number;
+    let phase = 0;
+
+    const resize = () => {
+      const parent = canvas.parentElement;
+      if (parent) {
+        canvas.width = parent.clientWidth * window.devicePixelRatio;
+        canvas.height = parent.clientHeight * window.devicePixelRatio;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      }
+    };
+
+    resize();
+    window.addEventListener('resize', resize);
+
+    const draw = () => {
+      const width = canvas.width / window.devicePixelRatio;
+      const height = canvas.height / window.devicePixelRatio;
+      ctx.clearRect(0, 0, width, height);
+
+      // Draw faint background grid for authentic oscilloscope look
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.05)';
+      ctx.lineWidth = 1;
+      const gridSize = 40;
+      for (let x = 0; x < width; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < height; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      // Draw center horizontal baseline
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.1)';
+      ctx.beginPath();
+      ctx.moveTo(0, height / 2);
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
+
+      const isActive = activeHz !== null;
+      const baseSpeed = isActive ? 0.04 + (activeHz! / 20000) : 0.01;
+      const amplitude = isActive ? Math.min(60, 20 + (activeHz! / 15)) : 8;
+      const frequencyCount = isActive ? (activeHz! / 100) : 1.5;
+
+      phase += baseSpeed;
+
+      // Draw 3 layered harmonic sine waves (golden ratios/overtones) for premium look
+      const waves = [
+        { opacity: 0.1, thickness: 1, freqMult: 0.5, speedMult: 0.5, strokeColor: 'rgba(52, 211, 153, 0.3)' },
+        { opacity: 0.3, thickness: 1.5, freqMult: 2.0, speedMult: 1.5, strokeColor: 'rgba(5, 150, 105, 0.6)' },
+        { opacity: 0.9, thickness: 2.5, freqMult: 1.0, speedMult: 1.0, strokeColor: '#10b981' }
+      ];
+
+      waves.forEach((wave) => {
+        ctx.beginPath();
+        ctx.lineWidth = wave.thickness;
+        ctx.strokeStyle = wave.strokeColor;
+
+        // Apply drop shadow glow to the primary active wave
+        if (isActive && wave.opacity > 0.5) {
+          ctx.shadowBlur = 12;
+          ctx.shadowColor = '#10b981';
+        } else {
+          ctx.shadowBlur = 0;
+        }
+
+        for (let x = 0; x < width; x++) {
+          const progress = x / width;
+          // Fade waves gently at left and right boundaries for premium studio look
+          const edgeFade = Math.sin(progress * Math.PI);
+
+          const angle = (progress * Math.PI * 2 * frequencyCount * wave.freqMult) - (phase * wave.speedMult);
+          const y = (height / 2) + Math.sin(angle) * amplitude * edgeFade;
+
+          if (x === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.stroke();
+      });
+
+      // Clear shadows for text/rest
+      ctx.shadowBlur = 0;
+
+      animationId = requestAnimationFrame(draw);
+    };
+
+    draw();
+
+    return () => {
+      cancelAnimationFrame(animationId);
+      window.removeEventListener('resize', resize);
+    };
+  }, [activeHz]);
+
+  const resonanceQuickTones = [174, 396, 432, 528, 963];
+
+  return (
+    <div className="relative w-full min-h-[14rem] sm:min-h-[16rem] bg-emerald-950/20 rounded-[2rem] border border-emerald-500/20 overflow-hidden shadow-2xl backdrop-blur-3xl p-6 sm:p-8 flex flex-col justify-between gap-4">
+      {/* Background glow */}
+      <div className={`absolute -inset-10 bg-emerald-500/10 blur-[100px] rounded-full transition-opacity duration-1000 ${activeHz ? 'opacity-100' : 'opacity-30'}`} />
+
+      {/* Grid overlay */}
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
+
+      {/* Top dashboard metadata */}
+      <div className="relative z-10 flex justify-between items-start pointer-events-none">
+        <div className="space-y-1">
+          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+            Resonance Monitor
+          </span>
+          <div className="flex items-center gap-2 mt-2">
+            <div className={`w-2 h-2 rounded-full ${activeHz ? 'bg-emerald-400 animate-pulse' : 'bg-emerald-800'}`} />
+            <p className="text-xs font-mono font-bold text-white/60">
+              {activeHz ? `TRANSMITTING @ ${activeHz}.00 HZ` : 'STANDBY - SOLFEGGIO SOURCE DETECTED'}
+            </p>
+          </div>
+        </div>
+        <div className="text-right space-y-1">
+          <p className="text-[9px] font-mono text-emerald-400/40">CALIBRATION ID: PHI-963</p>
+          <p className="text-[9px] font-mono text-emerald-400/40">SYSTEM STATUS: {activeHz ? 'OPTIMAL RESONANCE' : 'RESTING WAVE'}</p>
+        </div>
+      </div>
+
+      {/* Interactive Deck */}
+      {onToggle && (
+        <div className="relative z-20 flex flex-wrap gap-2.5 items-center justify-start py-2">
+          <span className="text-[8px] font-mono font-black text-white/30 uppercase tracking-[0.15em] mr-1">TUNER DECK:</span>
+          {resonanceQuickTones.map((hz) => {
+            const isHzActive = activeHz === hz;
+            return (
+              <button
+                key={hz}
+                onClick={() => onToggle(hz)}
+                className={`px-3 py-1.5 text-[9px] font-bold border rounded-lg font-mono transition-all duration-300 relative overflow-hidden flex items-center gap-1.5 cursor-pointer ${
+                  isHzActive 
+                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.35)]'
+                    : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10 hover:border-white/20 hover:text-white'
+                }`}
+              >
+                {isHzActive && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                {hz}Hz
+              </button>
+            );
+          })}
+          {activeHz !== null && (
+            <button
+              onClick={() => onToggle(activeHz)}
+              className="px-3 py-1.5 text-[8px] font-black uppercase tracking-wider border rounded-lg font-mono transition-all duration-300 bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20 cursor-pointer"
+            >
+              Mute
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Bottom telemetry readout */}
+      <div className="relative z-10 flex justify-between items-end pointer-events-none font-mono">
+        <div className="space-y-0.5">
+          <p className="text-[10px] text-white/40">BASE SYLLABLE: {activeHz ? getSolfeggioSyllable(activeHz) : 'N/A'}</p>
+          <p className="text-[10px] text-white/40">TUNING BASIS: A4 = 432HZ / SOLFEGGIO</p>
+        </div>
+        <div className="text-right space-y-0.5">
+          <p className="text-[10px] text-emerald-400/60 font-bold">{activeHz ? 'PHASE LOCK: 360°' : 'PHASE LOCK: STANDBY'}</p>
+          <p className="text-[10px] text-emerald-400/40">HARMONICS MULTIPLE: 1.618</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Helper helper to get traditional syllable names
+const getSolfeggioSyllable = (hz: number) => {
+  switch (hz) {
+    case 174: return 'FOUNDATION - BASE TONE';
+    case 285: return 'COGNITION - FIELD RECOVERY';
+    case 396: return 'UT - LIBERATOR OF GUILT & FEAR';
+    case 417: return 'RE - RESCUE / UNDO SYSTEMIC TRAUMA';
+    case 432: return 'NATURAL EARTH TUNING';
+    case 528: return 'MI - MIRACLE FREQUENCY / DNA BLUEPRINT';
+    case 639: return 'FA - HARMONIC UNION / FAMILY COMMUNION';
+    case 741: return 'SOL - CONSCIOUS EXPRESSION & CLEANSING';
+    case 852: return 'LA - AWAKENING DIVINE ORDER';
+    case 963: return 'SI - COSMIC CROWN / ONENESS SOURCE';
+    default: return 'RESONATING FREQUENCY';
+  }
+};
+
 const SonicView = memo(({ activeHz, onToggle, isMobile }: { activeHz: number | null, onToggle: (hz: number) => void, isMobile: boolean }) => {
   const frequencies = [
     { hz: 174, label: "Quantum Foundation", benefit: "Anxiety relief & pain reduction.", description: "The lowest frequency provides a stable foundation for manifestation." },
@@ -1635,11 +1854,16 @@ const SonicView = memo(({ activeHz, onToggle, isMobile }: { activeHz: number | n
   ];
 
   return (
-    <div className="max-w-5xl mx-auto px-4 lg:px-0">
-      <div className="mb-12">
-        <h3 className="text-3xl lg:text-4xl font-black mb-4 tracking-tight text-white italic">The Frequency Vault</h3>
-        <p className="text-stardust/40 font-medium leading-relaxed max-w-2xl italic">"If you want to find the secrets of the universe, think in terms of energy, frequency and vibration." — Nikola Tesla</p>
+    <div className="max-w-5xl mx-auto px-4 lg:px-0 space-y-10">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+        <div>
+          <h3 className="text-3xl lg:text-4xl font-black mb-3 tracking-tight text-white italic">The Frequency Vault</h3>
+          <p className="text-stardust/40 font-medium leading-relaxed max-w-2xl italic">"If you want to find the secrets of the universe, think in terms of energy, frequency and vibration." — Nikola Tesla</p>
+        </div>
       </div>
+
+      {/* Visualizer synthesis card */}
+      <SolfeggioVisualizer activeHz={activeHz} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
         {frequencies.map((f, i) => (
@@ -1648,32 +1872,39 @@ const SonicView = memo(({ activeHz, onToggle, isMobile }: { activeHz: number | n
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: i * 0.05 }}
-            whileHover={{ y: -5, scale: 1.02, borderColor: 'rgba(255,255,255,0.2)' }}
+            whileHover={{ y: -5, scale: 1.02, borderColor: 'rgba(16,185,129,0.3)' }}
             whileTap={{ scale: 0.98 }}
             onClick={() => onToggle(f.hz)}
-            className={`p-8 rounded-[2.5rem] border-2 transition-all cursor-pointer relative overflow-hidden group ${
+            className={`p-8 rounded-[2rem] border transition-all cursor-pointer relative overflow-hidden group ${
               activeHz === f.hz 
-                ? 'bg-gradient-to-br from-emerald-500 to-emerald-700 border-emerald-400 shadow-[0_30px_60px_rgba(16,185,129,0.4)]' 
-                : 'bg-emerald-500/5 border-emerald-500/10 hover:border-emerald-500/30'
+                ? 'bg-emerald-500/20 shadow-[0_20px_40px_rgba(16,185,129,0.2)] border-emerald-400' 
+                : 'bg-white/5 border-white/10 hover:border-emerald-500/30'
             }`}
           >
-            <div className={`absolute -right-10 -top-10 w-40 h-40 blur-[80px] rounded-full transition-opacity ${activeHz === f.hz ? 'bg-black/20 opacity-100' : 'bg-emerald-400/10 opacity-0 group-hover:opacity-100'}`} />
+            <div className={`absolute -right-10 -top-10 w-40 h-40 blur-[80px] rounded-full transition-opacity ${activeHz === f.hz ? 'bg-emerald-500/25 opacity-100' : 'bg-emerald-400/10 opacity-0 group-hover:opacity-100'}`} />
             
-            <div className="relative z-10">
-              <div className="flex justify-between items-start mb-8">
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${activeHz === f.hz ? 'bg-black/20 text-white' : 'bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20 group-hover:text-emerald-300'}`}>
-                  {activeHz === f.hz ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
+            <div className="relative z-10 flex flex-col justify-between h-full">
+              <div>
+                <div className="flex justify-between items-start mb-6">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeHz === f.hz ? 'bg-emerald-400/20 text-emerald-400 border border-emerald-400/20' : 'bg-white/5 border border-white/10 text-emerald-400/60 group-hover:bg-emerald-500/10 group-hover:text-emerald-400'}`}>
+                    {activeHz === f.hz ? <Pause className="w-5 h-5 animate-pulse" /> : <Play className="w-5 h-5" />}
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-4xl font-black tracking-tighter duration-300 ${activeHz === f.hz ? 'text-emerald-400' : 'text-white/60 group-hover:text-emerald-400'}`}>{f.hz}</span>
+                    <span className={`block text-[9px] font-black uppercase tracking-widest ${activeHz === f.hz ? 'text-emerald-400/40' : 'text-white/20'}`}>Hertz</span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className={`text-3xl font-black tracking-tighter ${activeHz === f.hz ? 'text-white' : 'text-emerald-400 group-hover:text-emerald-300'}`}>{f.hz}</span>
-                  <span className={`block text-[10px] font-black uppercase tracking-widest ${activeHz === f.hz ? 'text-white/40' : 'text-emerald-400/20'}`}>Hertz</span>
-                </div>
-              </div>
 
-              <h4 className={`text-xl font-black mb-2 tracking-tight ${activeHz === f.hz ? 'text-white' : 'text-white group-hover:text-emerald-400'}`}>{f.label}</h4>
-              <p className={`text-xs font-bold uppercase tracking-widest mb-6 ${activeHz === f.hz ? 'text-white/60' : 'text-emerald-400/60'}`}>{f.benefit}</p>
+                <div className="space-y-1 mb-4">
+                  <span className="text-[10px] font-bold tracking-widest text-emerald-500/80 font-mono uppercase bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/10 inline-block">
+                    {getSolfeggioSyllable(f.hz).split(' ')[0]}
+                  </span>
+                  <h4 className={`text-xl font-black tracking-tight ${activeHz === f.hz ? 'text-white' : 'text-white group-hover:text-emerald-400'}`}>{f.label}</h4>
+                </div>
+                <p className={`text-xs font-bold uppercase tracking-widest mb-4 ${activeHz === f.hz ? 'text-emerald-400' : 'text-emerald-400/60'}`}>{f.benefit}</p>
+              </div>
               
-              <p className={`text-[11px] leading-relaxed font-medium italic ${activeHz === f.hz ? 'text-white/40' : 'text-emerald-400/40 text-justify'}`}>
+              <p className={`text-[11px] leading-relaxed font-semibold ${activeHz === f.hz ? 'text-white/60' : 'text-white/40'}`}>
                 {f.description}
               </p>
             </div>
@@ -1685,6 +1916,28 @@ const SonicView = memo(({ activeHz, onToggle, isMobile }: { activeHz: number | n
 });
 
 // --- View Sub-components ---
+
+const SacredMetricsTooltip = ({ active, payload, label, mode }: any) => {
+  if (active && payload && payload.length) {
+    const val = payload[0].value;
+    return (
+      <div className="bg-[#0b0118]/95 backdrop-blur-xl border border-white/10 p-3 rounded-2xl shadow-2xl font-mono text-left max-w-[180px]">
+        <p className="text-[8px] font-black tracking-widest text-[#10b981] uppercase mb-1">
+          {label || 'METRICS WAVE'}
+        </p>
+        <div className="flex items-baseline gap-1">
+          <span className="text-sm font-black text-white leading-none">
+            {mode === 'habits' ? `${val}%` : val >= 0 ? `+$${val.toLocaleString()}` : `-$${Math.abs(val).toLocaleString()}`}
+          </span>
+        </div>
+        <p className="text-[7px] text-white/40 mt-1 uppercase tracking-wider">
+          {mode === 'habits' ? 'Rituals Complete' : 'Cumulative Flow'}
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
 
 const SacredMetrics = memo(({ habits, logs, transactions, isMobile }: { habits: Habit[], logs: HabitLog[], transactions: Transaction[], isMobile: boolean }) => {
   const [mode, setMode] = useState<'habits' | 'wealth'>('habits');
@@ -1790,36 +2043,57 @@ const SacredMetrics = memo(({ habits, logs, transactions, isMobile }: { habits: 
       <div className={`absolute inset-0 bg-gradient-to-b ${mode === 'wealth' ? 'from-emerald-400/5' : 'from-emerald-500/5'} to-transparent pointer-events-none`} />
       
       <div className="relative z-10 flex flex-col h-full">
-        {/* Header Controls */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
+        {/* Header Controls with Smooth Gesture-Slabs */}
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between mb-6">
+          {/* Mode Switch Gesture-Slab */}
+          <div className="relative flex items-center bg-white/5 p-1 rounded-full border border-white/5 w-full sm:w-auto">
             <button 
               onClick={() => setMode('habits')}
-              className={`p-2 rounded-lg transition-all ${mode === 'habits' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-stardust/20'}`}
+              className="relative z-10 flex-1 sm:flex-initial px-4 py-2 flex items-center justify-center gap-1.5 text-[9px] font-black uppercase tracking-widest transition-colors duration-300"
+              style={{ color: mode === 'habits' ? '#fff' : 'rgba(255,255,255,0.4)' }}
             >
-              <Activity className="w-3.5 h-3.5" />
+              <Activity className="w-3 h-3" />
+              Rituals
             </button>
             <button 
               onClick={() => setMode('wealth')}
-              className={`p-2 rounded-lg transition-all ${mode === 'wealth' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-stardust/20'}`}
+              className="relative z-10 flex-1 sm:flex-initial px-4 py-2 flex items-center justify-center gap-1.5 text-[9px] font-black uppercase tracking-widest transition-colors duration-300"
+              style={{ color: mode === 'wealth' ? '#fff' : 'rgba(255,255,255,0.4)' }}
             >
-              <TrendingUp className="w-3.5 h-3.5" />
+              <TrendingUp className="w-3 h-3" />
+              Flow
             </button>
-            <h3 className="text-[9px] font-black uppercase tracking-[0.2em] text-stardust/40 ml-1">
-              {mode === 'habits' ? 'Rituals' : 'Flow'}
-            </h3>
+            <motion.div
+              layoutId="dashboardModeSlab"
+              className="absolute top-1 bottom-1 bg-emerald-500/20 rounded-full border border-emerald-500/20"
+              animate={{
+                left: mode === 'habits' ? '4px' : 'calc(50% - 2px)',
+                width: 'calc(50% - 2px)'
+              }}
+              transition={{ type: "spring", stiffness: 380, damping: 28 }}
+            />
           </div>
           
-          <div className="flex bg-white/5 p-1 rounded-xl">
+          {/* Timeframe Switch Gesture-Slab */}
+          <div className="relative flex bg-white/5 p-1 rounded-full border border-white/5 w-full sm:w-auto">
             {(['week', 'month', 'year'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTimeframe(t)}
-                className={`px-2 py-1 rounded-lg text-[7px] font-black uppercase tracking-widest transition-all ${timeframe === t ? 'bg-white text-cosmic-black shadow-lg' : 'text-stardust/30 hover:text-white'}`}
+                className={`relative z-10 flex-1 sm:flex-initial px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest transition-colors duration-300 ${timeframe === t ? 'text-cosmic-black font-black' : 'text-stardust/40 hover:text-white'}`}
               >
                 {t}
               </button>
             ))}
+            <motion.div
+              layoutId="sacredTimeframeActive"
+              className="absolute top-1 bottom-1 bg-white rounded-full shadow-lg border border-white/10"
+              animate={{
+                left: timeframe === 'week' ? '4px' : timeframe === 'month' ? 'calc(33.33% + 2px)' : 'calc(66.66% + 2px)',
+                width: 'calc(33.33% - 6px)'
+              }}
+              transition={{ type: "spring", stiffness: 380, damping: 28 }}
+            />
           </div>
         </div>
 
@@ -1830,7 +2104,7 @@ const SacredMetrics = memo(({ habits, logs, transactions, isMobile }: { habits: 
               {mode === 'habits' ? `${metricsData[metricsData.length - 1]?.value}%` : `$${Math.abs(metricsData[metricsData.length - 1]?.value).toLocaleString()}`}
             </span>
             <span className={`${isPositive ? 'text-emerald-400' : 'text-red-400'} text-[8px] font-black uppercase tracking-widest`}>
-              {mode === 'habits' ? 'Current' : metricsData[metricsData.length - 1]?.value >= 0 ? 'Net Abundance' : 'Net Scarcity'}
+              {mode === 'habits' ? 'Current Alignment' : metricsData[metricsData.length - 1]?.value >= 0 ? 'Net Abundance' : 'Net Scarcity'}
             </span>
           </div>
         </div>
@@ -1846,9 +2120,7 @@ const SacredMetrics = memo(({ habits, logs, transactions, isMobile }: { habits: 
                 </linearGradient>
               </defs>
               <Tooltip 
-                contentStyle={{ backgroundColor: '#0b0118', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '9px', fontWeight: 900 }}
-                itemStyle={{ color: isPositive ? '#10b981' : '#ef4444' }}
-                formatter={(val: number) => mode === 'habits' ? `${val}%` : `$${val.toLocaleString()}`}
+                content={<SacredMetricsTooltip mode={mode} />}
                 cursor={{ stroke: isPositive ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)', strokeWidth: 2 }}
               />
               <Area 
@@ -1898,7 +2170,9 @@ const DashboardView = memo(({
   setView,
   addTransaction,
   isMobile,
-  tier
+  tier,
+  activeHz,
+  onToggle
 }: { 
   habits: Habit[], 
   habitLogs: HabitLog[],
@@ -1911,7 +2185,9 @@ const DashboardView = memo(({
   setView: (v: View) => void,
   addTransaction: (type: 'income' | 'expense', amount: number, label: string, category: string) => void,
   isMobile: boolean,
-  tier: string
+  tier: string,
+  activeHz: number | null,
+  onToggle?: (hz: number) => void
 }) => {
   const progress = habits.length > 0 ? (habits.filter(h => h.completed).length / habits.length) * 100 : 0;
   const activeDesires = desires.filter(d => !d.isAchieved);
@@ -1974,50 +2250,59 @@ const DashboardView = memo(({
   const currentFocus = activeDesires[focusIndex % activeDesires.length] || desires[0];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-4 lg:gap-4 auto-rows-min pb-24 lg:pb-12 max-w-7xl mx-auto relative z-10">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-6 lg:gap-8 auto-rows-min pb-24 lg:pb-12 max-w-[90rem] mx-auto px-4 lg:px-6 relative z-10">
+      {/* Interactive Resonance Monitor Header */}
+      <motion.div 
+        initial={{ opacity: 0, y: -15 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="col-span-1 sm:col-span-2 lg:col-span-4"
+      >
+        <SolfeggioVisualizer activeHz={activeHz} onToggle={onToggle} />
+      </motion.div>
+
       {/* 1. Alignment Core */}
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        whileHover={{ scale: 1.002 }}
+        whileHover={{ scale: 1.005 }}
         onClick={() => setView('habits')}
-        className="sm:col-span-2 lg:col-span-2 bg-[#022c22]/80 backdrop-blur-2xl rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-8 lg:p-10 border border-emerald-500/20 shadow-2xl relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[280px] sm:min-h-[320px]"
+        className="sm:col-span-2 lg:col-span-2 bg-white/5 backdrop-blur-xl rounded-[2rem] p-8 sm:p-10 lg:p-12 border border-white/10 shadow-xl relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[360px] sm:min-h-[400px]"
       >
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent opacity-30" />
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 via-transparent to-transparent opacity-50" />
         <div className="relative z-10 flex flex-col h-full">
-          <div className="flex items-center justify-between mb-8">
-            <div className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black uppercase tracking-[0.4em] text-emerald-400 flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-              Vibe Engine: Online
+          <div className="flex items-center justify-between mb-12">
+            <div className="px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[9px] font-black uppercase tracking-[0.4em] text-emerald-300 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
+              Engine Stable
             </div>
-            <Activity className="w-4 h-4 text-emerald-500/20 group-hover:text-emerald-400 transition-colors" />
+            <Activity className="w-5 h-5 text-emerald-500/40 group-hover:text-emerald-400 transition-colors duration-500" />
           </div>
           
-          <h3 className="text-3xl lg:text-5xl font-black mb-4 tracking-tighter text-white drop-shadow-2xl italic leading-[0.9] uppercase">
+          <h3 className="text-4xl lg:text-7xl font-black mb-6 tracking-tight text-white drop-shadow-2xl italic leading-[0.9] uppercase">
             Universal <br /><span className="text-emerald-400">Order.</span>
           </h3>
-          <p className="text-stardust/40 mb-10 max-w-sm text-[10px] lg:text-xs font-bold leading-relaxed uppercase tracking-[0.15em] italic">
-            Synchronizing frequency with the quantum field. Your evolution is mathematical.
+          <p className="text-emerald-100/60 mb-12 max-w-sm text-xs font-bold leading-relaxed uppercase tracking-[0.2em] italic">
+            Synchronizing internal frequency with the quantum field.
           </p>
 
-          <div className="mt-auto grid grid-cols-2 gap-4">
-            <div className="relative pt-4 border-t border-white/5">
-              <div className="flex justify-between mb-2 text-[8px] font-black uppercase tracking-[0.2em] text-stardust/30">
+          <div className="mt-auto grid grid-cols-2 gap-8 border-t border-white/5 pt-8">
+            <div className="relative">
+              <div className="flex justify-between mb-3 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-300/60">
                 <span>Alignment</span>
-                <span className="text-emerald-400">+{Math.round(progress)}%</span>
+                <span>{Math.round(progress)}%</span>
               </div>
-              <div className="h-1.5 bg-white/5 rounded-full overflow-hidden p-[1px] border border-white/10">
+              <div className="h-2 bg-black/40 rounded-full overflow-hidden p-[1px] border border-white/5">
                 <motion.div 
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
-                  transition={{ duration: 1.5, ease: "circOut" }}
-                  className="h-full bg-gradient-to-r from-emerald-500 to-white rounded-full shadow-[0_0_15px_rgba(52,211,153,0.5)]" 
+                  transition={{ duration: 2, ease: "circOut" }}
+                  className="h-full bg-gradient-to-r from-emerald-400 to-white rounded-full shadow-[0_0_20px_rgba(52,211,153,0.6)]" 
                 />
               </div>
             </div>
-            <div className="relative pt-4 border-t border-white/5 flex flex-col justify-end">
-              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-stardust/30 block mb-1">Ritual Sync</span>
-              <span className="text-lg font-black text-white italic leading-none">{habits.filter(h => h.completed).length}<span className="text-white/20 mx-1">/</span>{habits.length}</span>
+            <div className="relative">
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-300/60 block mb-2">Ritual Sync</span>
+              <span className="text-3xl font-black text-white italic leading-none">{habits.filter(h => h.completed).length}<span className="text-emerald-800 mx-1">/</span>{habits.length}</span>
             </div>
           </div>
         </div>
@@ -2033,39 +2318,39 @@ const DashboardView = memo(({
         transition={{ delay: 0.1 }}
         whileHover={isMobile ? undefined : { y: -5, boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}
         onClick={() => setFocusIndex(focusIndex + 1)}
-        className="sm:col-span-1 lg:col-span-1 scripture-card rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-8 pb-10 border border-amber-900/10 relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[320px] sm:min-h-[340px] scripture-margin transform-gpu"
+        className="sm:col-span-1 lg:col-span-1 rounded-[2rem] p-8 sm:p-10 pb-10 border border-white/10 bg-white/5 backdrop-blur-xl shadow-xl relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[360px] sm:min-h-[400px] transform-gpu"
       >
         <div className="absolute inset-0 bg-gradient-to-tr from-amber-900/5 to-transparent pointer-events-none" />
-        <div className="relative z-10 flex flex-col h-full pl-10 lg:pl-12">
-          <div className="flex items-center justify-between mb-8">
-            <div className="p-2.5 bg-amber-900/5 rounded-xl flex items-center justify-center text-amber-900/30 group-hover:bg-amber-900 group-hover:text-white transition-all duration-300">
-              <Target className="w-5 h-5" />
+        <div className="relative z-10 flex flex-col h-full pl-6 lg:pl-8">
+          <div className="flex items-center justify-between mb-10">
+            <div className="p-3 bg-amber-900/10 rounded-2xl flex items-center justify-center text-amber-700/50 group-hover:bg-amber-900 group-hover:text-amber-100 transition-all duration-500">
+              <Target className="w-6 h-6" />
             </div>
-            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-amber-900/20 italic">The Path</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-900/30 italic">The Path</span>
           </div>
 
           <div className="flex-grow flex flex-col justify-center">
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentFocus?.id || 'empty'}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="mb-8"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mb-10"
               >
-                <h4 className="text-3xl font-black text-red-900 leading-[0.9] tracking-tighter italic mb-5 uppercase font-serif">
+                <h4 className="text-4xl lg:text-5xl font-black text-amber-950 leading-[0.9] tracking-tighter italic mb-6 uppercase font-serif">
                   {currentFocus?.text || 'Destiny Intent'}
                 </h4>
-                <div className="inline-block px-3 py-1 bg-amber-900/5 border border-amber-900/10 rounded-md text-[8px] font-black uppercase tracking-widest text-amber-950/40 italic">
+                <div className="inline-block px-4 py-1.5 bg-amber-900/10 border border-amber-900/20 rounded-lg text-[9px] font-black uppercase tracking-widest text-amber-900/50 italic">
                   {currentFocus?.category || 'Legacy'}
                 </div>
               </motion.div>
             </AnimatePresence>
           </div>
 
-          <div className="relative z-10 pt-6 border-t border-amber-900/10 flex items-center justify-between mt-auto">
-             <span className="text-[8px] font-black uppercase tracking-[0.2em] text-amber-900/30">Singularities: <span className="text-amber-900/60 ml-1">{activeDesires.length}</span></span>
-             <ChevronRight className="w-4 h-4 text-amber-900/20 group-hover:text-amber-900 transition-colors" />
+          <div className="relative z-10 pt-8 border-t border-amber-900/10 flex items-center justify-between mt-auto">
+             <span className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-900/40">Singularities: <span className="text-amber-950/70 ml-1">{activeDesires.length}</span></span>
+             <ChevronRight className="w-5 h-5 text-amber-900/30 group-hover:text-amber-900 transition-colors duration-500" />
           </div>
         </div>
       </motion.div>
@@ -2082,22 +2367,38 @@ const DashboardView = memo(({
           <Activity className="w-3 h-3 text-emerald-400 animate-pulse" />
         </h3>
         
-        <div className="space-y-3 flex-grow">
+        <div className="space-y-4 flex-grow">
           {habits.slice(0, 4).map((habit, i) => (
             <motion.div 
               key={habit.id}
               initial={{ x: -10, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.4 + (i * 0.1) }}
-              onClick={() => toggleHabit(habit.id)}
-              className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-white/10 transition-all cursor-pointer group/item"
+              className="flex items-center justify-between p-5 rounded-3xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-emerald-500/30 transition-all shadow-inner"
             >
-              <div className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full transition-all ${habit.completed ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,1)]' : 'bg-white/10 group-hover/item:bg-white/20'}`} />
-                <span className={`text-[10px] font-black uppercase tracking-widest transition-all ${habit.completed ? 'text-stardust/20 line-through' : 'text-white/80 group-hover/item:text-white'}`}>
+              <div className="flex items-center gap-4 cursor-pointer" onClick={() => toggleHabit(habit.id)}>
+                <div className={`w-3 h-3 rounded-full transition-all duration-300 ${habit.completed ? 'bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.8)]' : 'bg-white/10'}`} />
+                <span className={`text-[11px] font-black uppercase tracking-widest transition-all ${habit.completed ? 'text-stardust/20 line-through' : 'text-white/90'}`}>
                   {habit.name}
                 </span>
               </div>
+              
+              {!habit.completed && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleHabit(habit.id);
+                    confetti({
+                      particleCount: 100,
+                      spread: 70,
+                      origin: { y: 0.6 }
+                    });
+                  }}
+                  className="p-2 bg-emerald-500/20 hover:bg-emerald-500/40 rounded-full transition-all"
+                >
+                  <Check className="w-4 h-4 text-emerald-400" />
+                </button>
+              )}
             </motion.div>
           ))}
         </div>
@@ -2253,7 +2554,6 @@ const VisionBoardView = memo(({ items, addItem, removeItem }: { items: VisionIte
   const [isAdding, setIsAdding] = useState(false);
   const [caption, setCaption] = useState('');
   const [imageUrl, setImageUrl] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAdd = async () => {
@@ -2285,22 +2585,6 @@ const VisionBoardView = memo(({ items, addItem, removeItem }: { items: VisionIte
       };
       reader.readAsDataURL(file);
     }
-  };
-
-  const generateAIImage = async () => {
-    if (!caption) return;
-    setIsGenerating(true);
-    // Simulating AI generation using pollinations.ai
-    const encodedPrompt = encodeURIComponent(caption);
-    const generatedUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&nologo=true&seed=${Math.floor(Math.random() * 100000)}`;
-    
-    // We "pre-load" it to show we are generating
-    const img = new Image();
-    img.src = generatedUrl;
-    img.onload = () => {
-      setImageUrl(generatedUrl);
-      setIsGenerating(false);
-    };
   };
 
   return (
@@ -2368,7 +2652,7 @@ const VisionBoardView = memo(({ items, addItem, removeItem }: { items: VisionIte
                           placeholder="Paste image URL here..." 
                           className="flex-grow bg-white/5 border border-white/10 rounded-2xl px-5 sm:px-6 py-3 sm:py-4 text-stardust font-bold focus:ring-2 focus:ring-white/30 outline-none text-sm"
                         />
-                        <div className="flex gap-2 shrink-0">
+                        <div className="flex shrink-0">
                           <input 
                             type="file" 
                             ref={fileInputRef} 
@@ -2378,22 +2662,14 @@ const VisionBoardView = memo(({ items, addItem, removeItem }: { items: VisionIte
                           />
                           <button 
                             onClick={() => fileInputRef.current?.click()}
-                            className="flex-1 sm:flex-none px-4 sm:px-5 py-3 sm:py-4 bg-white/10 rounded-2xl text-stardust hover:text-white hover:bg-white/20 transition-all font-black uppercase text-[9px] lg:text-[10px] tracking-widest flex items-center justify-center gap-2"
+                            className="w-full px-5 py-4 bg-white/10 rounded-2xl text-stardust hover:text-white hover:bg-white/20 transition-all font-black uppercase text-[9px] lg:text-[10px] tracking-widest flex items-center justify-center gap-2"
                           >
                             <Upload className="w-4 h-4" />
-                            Device
-                          </button>
-                          <button 
-                            onClick={generateAIImage}
-                            disabled={isGenerating || !caption}
-                            className={`flex-1 sm:flex-none px-4 sm:px-5 py-3 sm:py-4 rounded-2xl font-black uppercase text-[9px] lg:text-[10px] tracking-widest flex items-center justify-center gap-2 transition-all ${isGenerating ? 'bg-white/10 text-stardust/40' : 'bg-white/10 text-white hover:bg-white hover:text-cosmic-black'}`}
-                          >
-                            {isGenerating ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Wand2 className="w-4 h-4" />}
-                            {isGenerating ? 'Wait...' : 'AI'}
+                            Device Upload
                           </button>
                         </div>
                       </div>
-                      <p className="text-[9px] text-stardust/20 font-medium italic text-center">Tip: You can paste a link, upload from device, or use AI.</p>
+                      <p className="text-[9px] text-stardust/20 font-medium italic text-center">Tip: You can paste a link or upload from your device.</p>
                     </div>
                   </div>
 
@@ -2496,24 +2772,60 @@ const VisionBoardView = memo(({ items, addItem, removeItem }: { items: VisionIte
   );
 });
 
-const WealthView = memo(({ 
-  transactions, 
-  addTransaction, 
+const TrendTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const val = payload[0].value;
+    const isValPositive = val >= 0;
+    return (
+      <div className="bg-cosmic-void/95 backdrop-blur-xl border border-white/10 p-3.5 rounded-2xl shadow-2xl font-mono text-left max-w-[200px]">
+        <p className="text-[8px] font-black tracking-widest text-emerald-400 uppercase mb-1.5">
+          {label ? label.toUpperCase() : 'VALUATION'}
+        </p>
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${isValPositive ? 'bg-emerald-400' : 'bg-red-450'} animate-pulse`} />
+          <span className="text-sm font-black text-white leading-none">
+            {val >= 0 ? `+$${val.toLocaleString()}` : `-$${Math.abs(val).toLocaleString()}`}
+          </span>
+        </div>
+        <p className="text-[7.5px] text-white/35 mt-1.5 uppercase tracking-wider">
+          Net Sovereign Capital
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
+const WealthView = memo(({
+  transactions,
+  addTransaction,
   removeTransaction,
-  isMobile
-}: { 
-  transactions: Transaction[], 
+  isMobile,
+  setView,
+  tier
+}: {
+  transactions: Transaction[],
   addTransaction: (type: 'income' | 'expense', amount: number, label: string, category: string) => void,
   removeTransaction: (id: string) => void,
-  isMobile: boolean
+  isMobile: boolean,
+  setView: (v: View) => void,
+  tier: string
 }) => {
+  console.log("WealthView rendered. Transactions:", transactions.length, "Tier:", tier);
   const [showAdd, setShowAdd] = useState(false);
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [amount, setAmount] = useState('');
   const [label, setLabel] = useState('');
   const [category, setCategory] = useState('Personal');
 
+
   const categories = ['Personal', 'Business', 'Growth', 'Rituals', 'Leisure', 'Health', 'Investments'];
+  const allCategories = useMemo(() => Array.from(new Set([...categories, ...transactions.map(t => t.category)])), [transactions]);
+  const commonCategories = useMemo(() => {
+    const counts: Record<string, number> = {};
+    transactions.forEach(t => counts[t.category] = (counts[t.category] || 0) + 1);
+    return Object.entries(counts).sort((a,b) => b[1] - a[1]).map(e => e[0]).slice(0, 5);
+  }, [transactions]);
 
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((acc, curr) => acc + curr.amount, 0);
   const totalExpense = transactions.filter(t => t.type === 'expense').reduce((acc, curr) => acc + curr.amount, 0);
@@ -2548,6 +2860,10 @@ const WealthView = memo(({
   const COLORS = ['#10b981', '#34d399', '#059669', '#047857', '#065f46', '#064e3b', '#06b6d4'];
 
   const handleAdd = () => {
+    if (tier === 'Novice' && transactions.length >= 5) {
+      setView('pricing');
+      return;
+    }
     if (!amount || !label) return;
     addTransaction(type, parseFloat(amount), label, category);
     setShowAdd(false);
@@ -2559,27 +2875,27 @@ const WealthView = memo(({
     <div className="max-w-5xl mx-auto px-4 lg:px-0">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-12">
         <motion.div 
-          whileHover={{ y: -5 }}
-          className="bg-emerald-500/10 border border-emerald-500/20 p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] flex flex-col justify-between"
+          whileHover={{ y: -2 }}
+          className="relative bg-black/40 p-6 sm:p-8 rounded-3xl border border-emerald-500/10 flex flex-col justify-between overflow-hidden shadow-2xl hover:border-emerald-500/40 transition-all after:absolute after:inset-0 after:bg-gradient-to-tr after:from-emerald-500/5 after:to-transparent after:pointer-events-none"
         >
-          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-2">Inflow Frequency</p>
-          <p className="text-3xl font-black text-white italic">+${totalIncome.toLocaleString()}</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 mb-2 relative z-10">Inflow Frequency</p>
+          <p className="text-4xl font-black text-white relative z-10">+${totalIncome.toLocaleString()}</p>
         </motion.div>
         
         <motion.div 
-          whileHover={{ y: -5 }}
-          className="bg-red-500/10 border border-red-500/20 p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] flex flex-col justify-between"
+          whileHover={{ y: -2 }}
+          className="relative bg-black/40 p-6 sm:p-8 rounded-3xl border border-red-500/10 flex flex-col justify-between overflow-hidden shadow-2xl hover:border-red-500/40 transition-all after:absolute after:inset-0 after:bg-gradient-to-tr after:from-red-500/5 after:to-transparent after:pointer-events-none"
         >
-          <p className="text-[10px] font-black uppercase tracking-widest text-red-400 mb-2">Outflow Velocity</p>
-          <p className="text-3xl font-black text-white italic">-${totalExpense.toLocaleString()}</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-red-400 mb-2 relative z-10">Outflow Velocity</p>
+          <p className="text-4xl font-black text-white relative z-10">-${totalExpense.toLocaleString()}</p>
         </motion.div>
 
         <motion.div 
-          whileHover={{ y: -5 }}
-          className="bg-white/10 border border-white/20 p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] flex flex-col justify-between"
+          whileHover={{ y: -2 }}
+          className="relative bg-black/40 p-6 sm:p-8 rounded-3xl border border-white/10 flex flex-col justify-between overflow-hidden shadow-2xl hover:border-white/30 transition-all after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none"
         >
-          <p className="text-[10px] font-black uppercase tracking-widest text-stardust/40 mb-2">Net Abundance</p>
-          <p className={`text-3xl font-black italic ${flow >= 0 ? 'text-white' : 'text-red-400'}`}>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-2 relative z-10">Net Abundance</p>
+          <p className={`text-4xl font-black ${flow >= 0 ? 'text-white' : 'text-red-400'} relative z-10`}>
             {flow >= 0 ? '+' : ''}${flow.toLocaleString()}
           </p>
         </motion.div>
@@ -2590,35 +2906,34 @@ const WealthView = memo(({
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] h-[350px]"
+            className="bg-[#050505] border border-white/10 p-8 rounded-3xl h-[350px] shadow-2xl hover:border-white/20 transition-all font-sans"
           >
-            <h4 className="text-[10px] font-black uppercase tracking-widest text-stardust/40 mb-6 italic">Evolution of Abundance</h4>
-            <ResponsiveContainer width="100%" height="100%">
+            <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#10b981] font-mono mb-6">Evolution of Abundance</h4>
+            <ResponsiveContainer width="100%" height="85%" minWidth={0} minHeight={0}>
               <AreaChart data={trendData}>
                 <defs>
                   <linearGradient id="colorFlow" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ffffff" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#ffffff" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.35}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" vertical={false} />
                 <XAxis 
                   dataKey="date" 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 900 }} 
+                  tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 8, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }} 
                 />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 900 }} 
+                  tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 8, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }} 
                 />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '1rem' }}
-                  itemStyle={{ color: '#fff', fontSize: '12px', fontWeight: 900 }}
-                  labelStyle={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', marginBottom: '4px' }}
+                  content={<TrendTooltip />}
+                  cursor={{ stroke: 'rgba(16,185,129,0.2)', strokeWidth: 2 }}
                 />
-                <Area type="monotone" dataKey="flow" stroke="#ffffff" fillOpacity={1} fill="url(#colorFlow)" strokeWidth={3} />
+                <Area type="monotone" dataKey="flow" stroke="#10b981" fillOpacity={1} fill="url(#colorFlow)" strokeWidth={3} />
               </AreaChart>
             </ResponsiveContainer>
           </motion.div>
@@ -2627,12 +2942,12 @@ const WealthView = memo(({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] h-[350px] flex flex-col"
+            className="bg-white/5 border border-white/5 p-8 rounded-3xl h-[350px] flex flex-col"
           >
-            <h4 className="text-[10px] font-black uppercase tracking-widest text-stardust/40 mb-6 italic">Energy Allocation</h4>
+            <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-6">Energy Allocation</h4>
             <div className="flex-1 flex flex-col md:flex-row items-center">
               <div className="w-full h-[200px] md:w-1/2">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <PieChart>
                     <Pie
                       data={pieData}
@@ -2642,22 +2957,24 @@ const WealthView = memo(({
                       outerRadius={80}
                       paddingAngle={5}
                       dataKey="value"
+                      stroke="none"
                     >
                       {pieData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#000', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '1rem' }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="w-full md:w-1/2 mt-4 md:mt-0 flex flex-wrap gap-x-6 gap-y-2">
-                {pieData.map((d, i) => (
-                  <div key={d.name} className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                    <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">{d.name}</span>
-                    <span className="text-[10px] font-black text-white italic">${d.value.toLocaleString()}</span>
-                  </div>
+              <div className="flex flex-wrap gap-2 justify-center mt-4 md:mt-0 md:w-1/2">
+                {pieData.map((entry, index) => (
+                    <div key={entry.name} className="flex items-center gap-1.5 bg-white/5 px-2 py-1 rounded-full">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                        <span className="text-[9px] font-bold text-white/70">{entry.name}</span>
+                    </div>
                 ))}
               </div>
             </div>
@@ -2666,9 +2983,17 @@ const WealthView = memo(({
       )}
 
       <div className="flex justify-between items-center mb-10">
-        <h3 className="text-2xl lg:text-3xl font-black text-white italic">Wealth Log</h3>
+        <h3 className="text-2xl lg:text-3xl font-extrabold font-display text-white italic">Wealth Log</h3>
         <button 
-          onClick={() => setShowAdd(true)}
+          onClick={() => {
+            console.log("Record Movement clicked. Tier:", tier, "Transactions count:", transactions.length);
+            if (tier === 'Novice' && transactions.length >= 5) {
+              console.log("Redirecting to pricing");
+              setView('pricing');
+            } else {
+              setShowAdd(true);
+            }
+          }}
           className="bg-white text-cosmic-black px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-white/20"
         >
           Record Movement
@@ -2699,19 +3024,30 @@ const WealthView = memo(({
               </div>
 
               <div className="space-y-6">
-                <div className="flex gap-2">
+                <div className="relative flex p-1 bg-white/5 rounded-2xl border border-white/5 overflow-hidden">
                   <button 
                     onClick={() => setType('expense')}
-                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${type === 'expense' ? 'bg-red-500 text-white' : 'bg-white/5 text-stardust/40'}`}
+                    className="relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-300"
+                    style={{ color: type === 'expense' ? '#fff' : 'rgba(255,255,255,0.4)' }}
                   >
                     Outflow
                   </button>
                   <button 
                     onClick={() => setType('income')}
-                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${type === 'income' ? 'bg-emerald-500 text-white' : 'bg-white/5 text-stardust/40'}`}
+                    className="relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-300"
+                    style={{ color: type === 'income' ? '#fff' : 'rgba(255,255,255,0.4)' }}
                   >
                     Inflow
                   </button>
+                  <motion.div
+                    layoutId="wealthModalTypeActive"
+                    className={`absolute top-1 bottom-1 rounded-xl shadow-lg border ${type === 'expense' ? 'bg-red-550/20 border-red-500/30' : 'bg-emerald-550/20 border-emerald-500/30'}`}
+                    animate={{
+                      left: type === 'expense' ? '4px' : 'calc(50% + 2px)',
+                      width: 'calc(50% - 6px)'
+                    }}
+                    transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                  />
                 </div>
 
                 <div>
@@ -2738,8 +3074,9 @@ const WealthView = memo(({
 
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-stardust/40 mb-2">Vibrational Category</label>
-                  <div className="flex flex-wrap gap-2">
-                    {categories.map(cat => (
+
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {commonCategories.map(cat => (
                       <button
                         key={cat}
                         onClick={() => setCategory(cat)}
@@ -2749,6 +3086,16 @@ const WealthView = memo(({
                       </button>
                     ))}
                   </div>
+                  <input
+                    list="category-suggestions"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    placeholder="Or type a category..."
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:ring-2 focus:ring-emerald-500/30 outline-none"
+                  />
+                  <datalist id="category-suggestions">
+                    {allCategories.map(cat => <option key={cat} value={cat} />)}
+                  </datalist>
                 </div>
 
                 <button 
@@ -2874,19 +3221,28 @@ const HabitsView = memo(({
 
   return (
     <div className="max-w-4xl mx-auto px-2 lg:px-0">
-      <div className="flex gap-4 mb-12">
+      <div className="relative flex p-1 bg-white/5 rounded-3xl border border-white/5 mb-12 max-w-[380px] overflow-hidden">
         <button 
           onClick={() => { setTab('rituals'); setSelectedHabitId(null); }}
-          className={`px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all ${tab === 'rituals' ? 'bg-white text-cosmic-black shadow-xl shadow-white/10' : 'bg-white/5 text-stardust/40 hover:bg-white/10'}`}
+          className={`relative z-10 flex-1 py-3.5 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-colors duration-300 ${tab === 'rituals' ? 'text-cosmic-black font-semibold' : 'text-stardust/40 hover:text-white'}`}
         >
           Daily Habits
         </button>
         <button 
           onClick={() => setTab('diary')}
-          className={`px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all ${tab === 'diary' ? 'bg-white text-cosmic-black shadow-xl shadow-white/10' : 'bg-white/5 text-stardust/40 hover:bg-white/10'}`}
+          className={`relative z-10 flex-1 py-3.5 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-colors duration-300 ${tab === 'diary' ? 'text-cosmic-black font-semibold' : 'text-stardust/40 hover:text-white'}`}
         >
           Sacred Scripting
         </button>
+        <motion.div
+          layoutId="habitsTabSlab"
+          className="absolute top-1 bottom-1 bg-white rounded-2xl shadow-xl border border-white/10"
+          animate={{
+            left: tab === 'rituals' ? '4px' : 'calc(50% + 2px)',
+            width: 'calc(50% - 6px)'
+          }}
+          transition={{ type: "spring", stiffness: 350, damping: 26 }}
+        />
       </div>
 
       {tab === 'rituals' ? (
@@ -3011,37 +3367,37 @@ const HabitsView = memo(({
 
               <div className="grid grid-cols-1 gap-4">
                 {habits.map(habit => (
-                  <motion.div 
-                    key={habit.id}
-                    whileHover={{ scale: 1.01, x: 5, borderColor: 'rgba(255,255,255,0.2)' }}
-                    whileTap={{ scale: 0.99 }}
-                    className={`group p-6 lg:p-8 rounded-[2.5rem] border-2 transition-all cursor-pointer flex items-center justify-between ${habit.completed ? 'bg-white/5 border-transparent opacity-50' : 'glass-card border-white/5 hover:border-white/50 shadow-xl'}`}
+                  <div key={habit.id}>
+                    <StreakCalendar habitId={habit.id} logs={habitLogs} />
+                    <motion.div 
+                      key={habit.id}
+                      whileHover={{ scale: 1.005 }}
+                      whileTap={{ scale: 0.995 }}
+                    className={`group p-5 lg:p-6 rounded-3xl border transition-all cursor-pointer flex items-center justify-between ${habit.completed ? 'bg-white/5 border-transparent opacity-40' : 'bg-gradient-to-br from-white/10 to-white/5 border-white/10 hover:border-white/20 shadow-lg'}`}
                   >
-                    <div className="flex items-center gap-4 lg:gap-6 flex-grow" onClick={() => setSelectedHabitId(habit.id)}>
+                    <div className="flex items-center gap-4 lg:gap-5 flex-grow" onClick={() => setSelectedHabitId(habit.id)}>
                       <div 
                         onClick={(e) => { e.stopPropagation(); toggleHabit(habit.id, e as any); }}
-                        className={`w-12 h-12 lg:w-14 lg:h-14 rounded-2xl flex items-center justify-center transition-all ${habit.completed ? 'bg-white/5 text-stardust/20' : 'bg-white/10 text-white shadow-[0_0_15px_rgba(255,255,255,0.1)]'}`}
+                        className={`w-12 h-12 lg:w-14 lg:h-14 rounded-2xl flex items-center justify-center transition-all ${habit.completed ? 'bg-white/5 text-stardust/20' : 'bg-white/10 text-white shadow-inner'}`}
                       >
-                        <Zap className="w-6 h-6 lg:w-7 lg:h-7" />
+                        <Zap className="w-5 h-5 lg:w-6 lg:h-6" />
                       </div>
                       <div className="flex-grow">
-                        <h4 className={`text-lg lg:text-xl font-bold transition-colors ${habit.completed ? 'line-through text-stardust/30' : 'text-stardust'}`}>{habit.name}</h4>
-                        <div className="flex items-center gap-3 mt-1">
-                          <p className="text-[10px] font-black text-white/60 uppercase tracking-widest flex items-center gap-1">
-                            <Flame className="w-3 h-3" /> {habit.streak} STREAK
+                        <h4 className={`text-base lg:text-lg font-bold transition-colors ${habit.completed ? 'line-through text-stardust/40' : 'text-white'}`}>{habit.name}</h4>
+                        <div className="flex items-center gap-3 mt-1.5">
+                          <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider flex items-center gap-1.5 bg-white/5 px-2 py-1 rounded-md">
+                            <Flame className="w-3 h-3 text-emerald-400" /> {habit.streak} Streak
                           </p>
-                          <div className="w-1 h-1 bg-white/10 rounded-full" />
                           {habit.reminderTime ? (
-                            <p className="text-[10px] font-black text-white/40 uppercase tracking-widest flex items-center gap-1">
-                              <Bell className="w-2.5 h-2.5" /> {habit.reminderTime}
+                            <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider flex items-center gap-1.5 bg-white/5 px-2 py-1 rounded-md">
+                              <Bell className="w-3 h-3 text-indigo-400" /> {habit.reminderTime}
                             </p>
                           ) : (
-                            <p className="text-[10px] font-black text-stardust/20 uppercase tracking-widest">Alignment Active</p>
+                            <p className="text-[10px] font-bold text-stardust/30 uppercase tracking-wider px-2 py-1">Active</p>
                           )}
-                          <div className="w-1 h-1 bg-white/10 rounded-full" />
                           <button 
                             onClick={(e) => { e.stopPropagation(); openEdit(habit); }}
-                            className="text-[10px] font-black text-stardust/40 uppercase tracking-widest hover:text-white transition-colors"
+                            className="text-[10px] font-bold text-stardust/40 uppercase tracking-wider hover:text-white transition-colors"
                           >
                             Edit
                           </button>
@@ -3050,7 +3406,7 @@ const HabitsView = memo(({
                     </div>
                     <div 
                       onClick={(e) => toggleHabit(habit.id, e as any)}
-                      className={`w-8 h-8 lg:w-10 lg:h-10 rounded-xl border-2 flex items-center justify-center transition-all ${habit.completed ? 'bg-white border-white shadow-[0_0_15px_rgba(255,255,255,0.4)]' : 'border-white/10 group-hover:border-white'}`}
+                      className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${habit.completed ? 'bg-emerald-500 border-emerald-500 shadow-lg shadow-emerald-500/20' : 'border-white/10 hover:border-white/30'}`}
                     >
                       <AnimatePresence initial={false}>
                         {habit.completed && (
@@ -3058,14 +3414,14 @@ const HabitsView = memo(({
                             initial={{ scale: 0.5, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.5, opacity: 0 }}
-                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
                           >
-                            <CheckSquare className="w-4 h-4 lg:w-5 lg:h-5 text-cosmic-black" />
+                            <CheckSquare className="w-5 h-5 text-cosmic-black" />
                           </motion.div>
                         )}
                       </AnimatePresence>
                     </div>
                   </motion.div>
+                  </div>
                 ))}
               </div>
             </>
@@ -3078,34 +3434,102 @@ const HabitsView = memo(({
   );
 });
 
+const IntensityTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const val = payload[0].value;
+    return (
+      <div className="bg-cosmic-void/95 backdrop-blur-xl border border-white/10 p-3 rounded-2xl shadow-2xl font-mono text-left max-w-[180px]">
+        <p className="text-[8px] font-black tracking-widest text-[#34d399] uppercase mb-1">
+          {label || 'FOCUS LOG'}
+        </p>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-sm font-black text-white leading-none">
+            {val} / 10
+          </span>
+          <span className="text-[8px] font-bold text-white/55">INTENSITY</span>
+        </div>
+        <p className="text-[7.5px] text-white/35 mt-1 uppercase tracking-wider">
+          Resonant Strength
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
 const HabitHistory = ({ habit, logs }: { habit: Habit, logs: HabitLog[] }) => {
+  const chartData = useMemo(() => [...logs].sort((a,b) => {
+    const tA = (a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp)).getTime();
+    const tB = (b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp)).getTime();
+    return tA - tB;
+    }).map(log => ({
+      date: new Date(log.timestamp?.toDate ? log.timestamp.toDate() : log.timestamp).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}),
+      intensity: log.intensity || 0
+    })), [logs]);
+
   return (
     <div className="space-y-10">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 border-b border-white/5 pb-8 mb-4">
         <div>
-          <h3 className="text-4xl font-black italic text-white mb-2">{habit.name}</h3>
-          <p className="text-stardust/40 font-medium">Historical Frequency Records</p>
+          <h3 className="text-3xl font-black text-white mb-2">{habit.name}</h3>
+          <p className="text-white/60 text-sm">Historical Frequency Records</p>
         </div>
         
-        <div className="flex gap-4">
-          <div className="bg-white/5 border border-white/10 rounded-3xl px-8 py-4 text-center min-w-[120px]">
-             <p className="text-[8px] font-black uppercase tracking-widest text-stardust/40 mb-1">Rituals</p>
-             <p className="text-2xl font-black text-white">{logs.length}</p>
+        <div className="flex gap-3">
+          <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-3 text-center min-w-[100px]">
+             <p className="text-[9px] font-bold uppercase tracking-widest text-white/60 mb-1">Rituals</p>
+             <p className="text-xl font-black text-white">{logs.length}</p>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-3xl px-8 py-4 text-center min-w-[120px]">
-             <p className="text-[8px] font-black uppercase tracking-widest text-stardust/40 mb-1">Avg Intensity</p>
-             <p className="text-2xl font-black text-emerald-400">
+          <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-3 text-center min-w-[100px]">
+             <p className="text-[9px] font-bold uppercase tracking-widest text-white/60 mb-1">Avg Intensity</p>
+             <p className="text-xl font-black text-emerald-400">
                {logs.length > 0 ? (logs.reduce((acc, curr) => acc + (curr.intensity || 0), 0) / logs.length).toFixed(1) : '0'}
              </p>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
+      {logs.length > 1 && (
+        <div className="h-64 w-full bg-[#050505] rounded-3xl p-6 border border-white/10 font-sans">
+          <h4 className="text-[#34d399] font-mono font-bold uppercase text-[10px] tracking-widest mb-6">Intensity Trend</h4>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="intensityGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#34d399" stopOpacity={0.35}/>
+                  <stop offset="95%" stopColor="#34d399" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" vertical={false} />
+              <XAxis 
+                dataKey="date" 
+                axisLine={false} 
+                tickLine={false} 
+                stroke="transparent" 
+                tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 8, fontFamily: 'JetBrains Mono, monospace' }} 
+              />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false} 
+                stroke="transparent" 
+                domain={[0, 10]} 
+                tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 8, fontFamily: 'JetBrains Mono, monospace' }} 
+              />
+              <Tooltip 
+                content={<IntensityTooltip />} 
+                cursor={{ stroke: 'rgba(52,211,153,0.15)', strokeWidth: 2 }}
+              />
+              <Area type="monotone" dataKey="intensity" stroke="#34d399" fillOpacity={1} fill="url(#intensityGrad)" strokeWidth={3} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-3">
         {logs.length === 0 ? (
-          <div className="py-20 text-center bg-white/5 rounded-[2.5rem] border border-dashed border-white/10">
-            <Activity className="w-12 h-12 text-stardust/10 mx-auto mb-6" />
-            <p className="text-stardust/20 font-black uppercase tracking-widest text-xs italic">No frequencies recorded yet.</p>
+          <div className="py-16 text-center bg-white/5 rounded-3xl border border-dashed border-white/10">
+            <Activity className="w-10 h-10 text-stardust/20 mx-auto mb-4" />
+            <p className="text-white/50 font-bold uppercase tracking-widest text-xs">No frequencies recorded yet.</p>
           </div>
         ) : (
           logs.map((log, i) => (
@@ -3114,27 +3538,23 @@ const HabitHistory = ({ habit, logs }: { habit: Habit, logs: HabitLog[] }) => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(1, i * 0.05) }}
-              className="p-6 lg:p-8 rounded-[2.5rem] bg-white/5 border border-white/5 flex items-center justify-between transform-gpu"
+              className="p-5 rounded-2xl bg-white/10 border border-white/5 flex items-center justify-between"
             >
-              <div className="flex items-center gap-6">
-                <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20">
-                  <Zap className="w-6 h-6" />
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-emerald-400 border border-white/5">
+                  <Zap className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-stardust font-bold">{new Date(log.timestamp?.toDate ? log.timestamp.toDate() : log.timestamp).toLocaleDateString()}</span>
-                    <span className="px-3 py-1 bg-white/10 rounded-full text-[8px] font-black uppercase text-stardust/60 tracking-widest italic">{log.mood || 'Ascendant'}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white/90 text-sm font-bold">{new Date(log.timestamp?.toDate ? log.timestamp.toDate() : log.timestamp).toLocaleDateString()}</span>
+                    <span className="px-2 py-0.5 bg-emerald-500/20 rounded-md text-[9px] font-bold uppercase text-emerald-300 tracking-wider">
+                      {log.mood || 'Ascendant'}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-4 mt-2">
-                    <div className="flex items-center gap-1.5">
-                      <Timer className="w-3 h-3 text-stardust/40" />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-stardust/40">{log.duration || 0}m Ritual</span>
-                    </div>
-                    <div className="w-1 h-1 bg-white/10 rounded-full" />
-                    <div className="flex items-center gap-1.5">
-                      <Zap className="w-3 h-3 text-stardust/40" />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-stardust/40">Intensity {log.intensity || 0}/10</span>
-                    </div>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/60">{log.duration || 0}m Ritual</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/60">•</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/60">Intensity {log.intensity || 0}/10</span>
                   </div>
                 </div>
               </div>
@@ -3267,31 +3687,6 @@ const SacredJournaling = ({ entries, onSave }: { entries: DiaryEntry[], onSave: 
 const AcademyView = memo(({ tier }: { tier: string }) => {
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
 
-  if (tier !== 'Ascendant') {
-    return (
-      <div className="max-w-4xl mx-auto px-6 py-20 lg:py-40 flex flex-col items-center text-center">
-        <div className="w-24 h-24 bg-white/5 border border-white/10 rounded-full flex items-center justify-center text-stardust/20 mb-10 relative">
-          <Lock className="w-10 h-10" />
-          <motion.div 
-            animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }}
-            transition={{ duration: 4, repeat: Infinity }}
-            className="absolute inset-0 bg-emerald-500/10 blur-2xl rounded-full" 
-          />
-        </div>
-        <h3 className="font-serif text-4xl lg:text-6xl font-black mb-6 text-white italic">The Archive is Sealed.</h3>
-        <p className="text-stardust/40 text-lg lg:text-xl font-medium leading-relaxed font-serif max-w-xl mb-12">
-          Only those who have reached the <span className="text-emerald-400">Ascendant</span> frequency may enter these sacred manuscripts. Your current vibration is set to <span className="uppercase tracking-widest text-white">{tier}</span>.
-        </p>
-        <button 
-          onClick={() => (window as any).dispatchEvent(new CustomEvent('changeView', { detail: 'pricing' }))}
-          className="px-10 py-5 bg-white text-black font-black uppercase tracking-[0.2em] text-xs skew-x-[-10deg] hover:bg-emerald-400 transition-colors shadow-[10px_10px_0_rgba(255,255,255,0.1)] hover:shadow-[10px_10px_0_rgba(52,211,153,0.2)] active:translate-y-1 active:translate-x-1 active:shadow-none"
-        >
-          Ascend Now
-        </button>
-      </div>
-    );
-  }
-
   const lessons: (Lesson & { fullStep?: string[]; science?: string; image: string })[] = [
     { 
       id: '1', 
@@ -3362,6 +3757,34 @@ const AcademyView = memo(({ tier }: { tier: string }) => {
         'Gratitude: Write 10 things you are grateful for daily to shift your frequency.'
       ],
       science: 'The Law of Attraction is based on the idea that everything is energy. By aligning your vibration with your desire, you "collapse the wave function" of possibilities into your physical reality.'
+    },
+    { 
+      id: '6', 
+      title: 'Quantum Leaping & Jumping', 
+      description: 'Understanding manifestation as shifting to a parallel reality where your desire already exists.', 
+      trick: 'Shift your identity instantly by deciding "I am that version of me."',
+      image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?q=80&w=1000&auto=format',
+      fullStep: [
+        'Acknowledge that all versions of you exist in the present moment.',
+        'Identify which version you want to align with.',
+        'Adopt the vibration, thoughts, and emotions of that version right now.',
+        'Act as the person who already has the desire, trusting that reality follows vibration.'
+      ],
+      science: 'Rooted in quantum mechanics concepts where observation changes outcome. Conscious alignment of identity forces the collapse of wavefunction into the reality you perceive.'
+    },
+    { 
+      id: '7', 
+      title: 'Eastern Wisdom on Manifestation', 
+      description: 'Osho, Buddha, and the Gita on intention, presence, and detachment.', 
+      trick: 'Practice "Nishkama Karma": Work with full vigor but no neediness for the result.',
+      image: 'https://images.unsplash.com/photo-1545389336-cf090694735e?q=80&w=1000&auto=format',
+      fullStep: [
+        'Study "Sankalpa" (divine intent) from vedantic texts.',
+        'Observe your desires like Osho suggests, without identifying with them.',
+        'Apply the Gita’s principle of detachment: Do your best action, but relinquish control over outcomes.',
+        'Find Buddha’s "Middle Way": Balance desire with the peace of being present.'
+      ],
+      science: 'Studies show "detached observation" lowers stress via the parasympathetic nervous system, enhancing prefrontal cortex function—the brain area responsible for strategic planning and achievement.'
     }
   ];
 
@@ -3545,33 +3968,24 @@ const PricingView = memo(({ setView, user, tier, isMobile }: { setView: (v: View
 
   const getInrPrice = (planName: string) => {
     if (planName === 'Novice') return 0;
-    if (planName === 'Adept') {
-      if (billingCycle === 'monthly') return 299;
-      if (billingCycle === 'yearly') return 1999;
-      return 4999;
-    }
-    if (planName === 'Ascendant') {
-      if (billingCycle === 'monthly') return 699;
-      if (billingCycle === 'yearly') return 3999;
-      return 8999;
+    if (planName === 'Sovereign') {
+      if (billingCycle === 'monthly') return 499;
+      if (billingCycle === 'yearly') return 2999;
+      return 6999;
     }
     return 0;
   };
 
   const getUsdPrice = (planName: string) => {
     if (planName === 'Novice') return '0';
-    if (planName === 'Adept') {
-      if (billingCycle === 'monthly') return '5.99';
-      if (billingCycle === 'yearly') return '35.99';
-      return '88.88';
-    }
-    if (planName === 'Ascendant') {
+    if (planName === 'Sovereign') {
       if (billingCycle === 'monthly') return '9.99';
       if (billingCycle === 'yearly') return '59.99';
-      return '149.99';
+      return '199.99';
     }
     return '0';
   };
+
 
   const getPrice = (planName: string) => {
     return isIndianUser ? getInrPrice(planName).toString() : getUsdPrice(planName);
@@ -3732,35 +4146,25 @@ const PricingView = memo(({ setView, user, tier, isMobile }: { setView: (v: View
     {
       name: "Novice",
       price: "0",
-      description: "Basic frequency alignment for those starting their journey.",
-      features: ["Up to 3 Rituals", "Desire Log Access", "Basic Visualisation Board", "Community Forums"],
+      description: "Basic frequency alignment.",
+      features: ["Up to 3 Rituals", "Desire Log Access"],
       buttonText: "Current Path",
       isPremium: false,
       color: "border-white/10"
     },
     {
-      name: "Adept",
-      price: getPrice('Adept'),
-      description: "Amplify your manifestation intensity with advanced protocols.",
-      features: ["Unlimited Rituals", "AI Scripting Assistant", "High-Resolution Vision Media", "Priority Synchronization"],
-      buttonText: "Synchronize Now",
-      isPremium: true,
-      color: "border-white/40",
-      recommended: billingCycle === 'monthly',
-      planId: "P-ADEPT_PLAN_ID" 
-    },
-    {
-      name: "Ascendant",
-      price: getPrice('Ascendant'),
+      name: "Sovereign",
+      price: getPrice('Sovereign'),
       description: "Complete mastery over your reality. Full universal access.",
-      features: ["All Adept Features", "Full Academy Access", "Direct Frequency Coaching", "Custom Quantum Mandalas"],
-      buttonText: "Achieve Mastery",
+      features: ["Unlimited Rituals", "Full Academy Access", "Desire Log Access", "Flow State Analysis"],
+      buttonText: "Ascend Now",
       isPremium: true,
       color: "border-stardust/60",
-      recommended: billingCycle !== 'monthly',
-      planId: "P-ASCENDANT_PLAN_ID" 
+      recommended: true,
+      planId: "P-SOVEREIGN_PLAN_ID" 
     }
   ];
+
 
   const isPayPalConfigured = import.meta.env.VITE_PAYPAL_CLIENT_ID && 
                              import.meta.env.VITE_PAYPAL_CLIENT_ID !== "your_paypal_client_id_here" &&
