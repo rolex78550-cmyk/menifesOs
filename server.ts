@@ -184,6 +184,7 @@ app.post("/api/notify-ritual", async (req, res) => {
   }
 });
 
+// Start server execution
 async function startServer() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

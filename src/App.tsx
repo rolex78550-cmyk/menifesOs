@@ -16,6 +16,7 @@ import {
   deleteDoc, 
   doc, 
   setDoc,
+  writeBatch,
   serverTimestamp,
   orderBy,
   Timestamp
@@ -339,7 +340,7 @@ const HabitMetricsModal = ({ habit, onClose, onSave }: { habit: Habit, onClose: 
   );
 };
 
-const Sidebar = memo(({ currentView, setView, tier, isMobile }: { currentView: View, setView: (v: View) => void, tier: string, isMobile: boolean }) => {
+const Sidebar = ({ currentView, setView, tier, isMobile }: { currentView: View, setView: (v: View) => void, tier: string, isMobile: boolean }) => {
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Omni' },
     { id: 'manifest', icon: Target, label: 'Desire' },
@@ -353,7 +354,7 @@ const Sidebar = memo(({ currentView, setView, tier, isMobile }: { currentView: V
   ];
 
   return (
-    <div className="w-full lg:w-72 fixed bottom-0 lg:top-0 lg:left-0 lg:bottom-0 bg-[#000105]/95 lg:bg-[#000105] backdrop-blur-xl z-[100] border-t lg:border-t-0 lg:border-r border-emerald-500/10 shadow-[0_-10px_40px_rgba(0,0,0,0.8)] lg:shadow-none safe-bottom overflow-y-auto lg:overflow-y-auto no-scrollbar flex lg:flex-col lg:h-screen px-4 py-3 lg:px-6 lg:py-10">
+    <div className="w-full lg:w-72 fixed bottom-0 left-0 right-0 lg:top-0 lg:left-0 lg:bottom-0 lg:h-screen bg-[#000105]/95 lg:bg-[#000105] backdrop-blur-xl z-[100] border-t lg:border-t-0 lg:border-r border-emerald-500/10 shadow-[0_-10px_40px_rgba(0,0,0,0.8)] lg:shadow-none safe-bottom flex lg:flex-col px-4 py-2 lg:px-6 lg:py-10">
       <div className="hidden lg:flex items-center gap-3 mb-12 px-2 group cursor-pointer" onClick={() => setView('dashboard')}>
         <div className="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-2xl shadow-emerald-500/20 group-hover:rotate-12 transition-transform">
           <Infinity className="w-6 h-6 text-white" />
@@ -394,9 +395,9 @@ const Sidebar = memo(({ currentView, setView, tier, isMobile }: { currentView: V
       </div>
     </div>
   );
-});
+};
 
-const CosmicBackground = memo(({ isMobile }: { isMobile?: boolean }) => {
+const CosmicBackground = ({ isMobile }: { isMobile?: boolean }) => {
   const [internalIsMobile, setInternalIsMobile] = useState(false);
 
   useEffect(() => {
@@ -513,7 +514,7 @@ const CosmicBackground = memo(({ isMobile }: { isMobile?: boolean }) => {
       )}
     </div>
   );
-});
+};
 
 const insights = [
   "Your focus creates your reality. Today, focus on abundance.",
@@ -659,6 +660,71 @@ export default function App() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const oscillatorRef = useRef<OscillatorNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  
+  // Custom & Guided Audio Streams (Bhajans, Meditation Tracks & Podcasts)
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const [activeTrack, setActiveTrack] = useState<any | null>(null);
+  const [isTrackPlaying, setIsTrackPlaying] = useState(false);
+  const [customTracks, setCustomTracks] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('cosmic_custom_tracks');
+      return saved ? JSON.parse(saved) : [];
+    } catch (_) {
+      return [];
+    }
+  });
+
+  const toggleTrack = (track: any) => {
+    // Stop pure tone frequency oscillator if active
+    if (oscillatorRef.current) {
+      stopFrequency();
+    }
+
+    if (activeTrack?.id === track.id) {
+      if (isTrackPlaying) {
+        audioPlayerRef.current?.pause();
+        setIsTrackPlaying(false);
+        setActiveHz(null);
+      } else {
+        audioPlayerRef.current?.play().catch(e => console.error("Play error:", e));
+        setIsTrackPlaying(true);
+        setActiveHz(track.virtualHz || 432);
+      }
+    } else {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+      }
+      const audio = new Audio(track.url);
+      audio.loop = true;
+      audioPlayerRef.current = audio;
+      
+      setIsTrackPlaying(true);
+      setActiveTrack(track);
+      setActiveHz(track.virtualHz || 432);
+      
+      audio.play().catch(e => {
+        console.warn("Audio stream blocked or failed, keeping indicator.", e);
+      });
+    }
+  };
+
+  const addCustomTrack = (track: any) => {
+    const updated = [...customTracks, track];
+    setCustomTracks(updated);
+    localStorage.setItem('cosmic_custom_tracks', JSON.stringify(updated));
+  };
+
+  const deleteCustomTrack = (id: string) => {
+    const updated = customTracks.filter(t => t.id !== id);
+    setCustomTracks(updated);
+    localStorage.setItem('cosmic_custom_tracks', JSON.stringify(updated));
+    if (activeTrack?.id === id) {
+      audioPlayerRef.current?.pause();
+      setIsTrackPlaying(false);
+      setActiveTrack(null);
+      setActiveHz(null);
+    }
+  };
 
   const toggleFrequency = (hz: number) => {
     if (activeHz === hz) {
@@ -670,6 +736,13 @@ export default function App() {
 
   const playFrequency = (hz: number) => {
     stopFrequency();
+    
+    // Stop ambient music/podcast if running
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      setIsTrackPlaying(false);
+      setActiveTrack(null);
+    }
     
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -714,7 +787,12 @@ export default function App() {
   };
 
   useEffect(() => {
-    return () => stopFrequency();
+    return () => {
+      stopFrequency();
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -761,6 +839,49 @@ export default function App() {
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'habits'));
     return () => unsubscribe();
   }, [user]);
+
+  // Periodic reset check logic (Daily Reset)
+  useEffect(() => {
+    if (!user || habits.length === 0) return;
+
+    const resetHabitsIfNeeded = async () => {
+      const now = new Date();
+      const todayString = now.toDateString(); 
+      
+      let needsReset = false;
+      const batch = writeBatch(db);
+
+      habits.forEach(habit => {
+        // If the habit was completed but the last update was NOT today, reset it
+        if (habit.completed && habit.updatedAt) {
+          try {
+            const dateObj = habit.updatedAt.toDate ? habit.updatedAt.toDate() : new Date(habit.updatedAt);
+            const lastUpdateDate = dateObj.toDateString();
+            
+            if (lastUpdateDate !== todayString) {
+              batch.update(doc(db, 'habits', habit.id), {
+                completed: false,
+                updatedAt: serverTimestamp()
+              });
+              needsReset = true;
+            }
+          } catch (e) {
+            console.warn("Date parsing error in reset:", e);
+          }
+        }
+      });
+
+      if (needsReset) {
+        try {
+          await batch.commit();
+        } catch (e) {
+          console.error("Daily ritual reset failed:", e);
+        }
+      }
+    };
+
+    resetHabitsIfNeeded();
+  }, [user, habits]);
   
   // Sync Habit Logs
   useEffect(() => {
@@ -1153,7 +1274,13 @@ export default function App() {
       case 'habits': return <HabitsView habits={habits} habitLogs={habitLogs} addHabit={addHabit} updateHabit={updateHabit} removeHabit={removeHabit} toggleHabit={toggleHabit} diaryEntries={diaryEntries} addDiaryEntry={addDiaryEntry} isMobile={isMobile} tier={activeTier} />;
       case 'vision': return <VisionBoardView items={visionItems} addItem={addVisionItem} removeItem={removeVisionItem} />;
       case 'wealth': return <WealthView transactions={transactions} addTransaction={addTransaction} removeTransaction={removeTransaction} isMobile={isMobile} setView={setView} tier={activeTier} />;
-      case 'sonic': return <SonicView activeHz={activeHz} onToggle={toggleFrequency} isMobile={isMobile} />;
+      case 'sonic': return (
+        <SonicView 
+          activeHz={activeHz} 
+          onToggle={toggleFrequency} 
+          isMobile={isMobile}
+        />
+      );
       case 'academy': return <AcademyView tier={activeTier} />;
       case 'pricing': return <PricingView setView={setView} user={user} tier={activeTier} isMobile={isMobile} />;
       case 'settings': return <SettingsView setView={setView} user={user} tier={userProfile?.tier || 'Novice'} onToast={setActiveToast} expiry={userProfile?.subscriptionExpiry} />;
@@ -1163,7 +1290,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-cosmic-black text-stardust font-sans flex flex-col lg:flex-row relative lg:overflow-hidden gpu">
+    <div className="h-screen bg-cosmic-black text-stardust font-sans flex flex-col lg:flex-row relative overflow-hidden gpu">
       <CosmicBackground isMobile={isMobile} />
       
       <Sidebar currentView={view} setView={setView} tier={userProfile?.tier || 'Novice'} isMobile={isMobile} />
@@ -1178,7 +1305,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main ref={mainContainerRef} className="flex-grow lg:pl-72 p-4 lg:p-5 mb-28 lg:mb-0 min-h-screen lg:h-screen overflow-y-auto lg:overflow-y-auto relative z-10 no-scrollbar overscroll-behavior-contain touch-pan-y">
+      <main ref={mainContainerRef} className="flex-grow lg:pl-72 p-4 lg:p-5 pb-32 lg:pb-0 h-full overflow-y-auto relative z-10 no-scrollbar overscroll-behavior-contain touch-pan-y">
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-10 lg:mb-16 pb-8 border-b border-white/5">
           <div className="w-full lg:w-auto flex items-center justify-between md:block">
             <div className="space-y-1">
@@ -1334,7 +1461,7 @@ export default function App() {
   );
 }
 
-const SettingsView = memo(({ setView, user, tier, onToast, expiry }: { setView: (v: View) => void, user: User | null, tier: string, onToast: (t: any) => void, expiry?: any }) => {
+const SettingsView = ({ setView, user, tier, onToast, expiry }: { setView: (v: View) => void, user: User | null, tier: string, onToast: (t: any) => void, expiry?: any }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [isUpdating, setIsUpdating] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -1573,7 +1700,7 @@ const SettingsView = memo(({ setView, user, tier, onToast, expiry }: { setView: 
       </div>
     </div>
   );
-});
+};
 
 const TermsView = ({ setView }: { setView: (v: View) => void }) => (
   <div className="max-w-4xl mx-auto py-10 px-6 font-serif prose prose-invert">
@@ -1839,33 +1966,44 @@ const getSolfeggioSyllable = (hz: number) => {
   }
 };
 
-const SonicView = memo(({ activeHz, onToggle, isMobile }: { activeHz: number | null, onToggle: (hz: number) => void, isMobile: boolean }) => {
+const SonicView = ({ 
+  activeHz, 
+  onToggle, 
+  isMobile
+}: { 
+  activeHz: number | null, 
+  onToggle: (hz: number) => void, 
+  isMobile: boolean
+}) => {
   const frequencies = [
     { hz: 174, label: "Quantum Foundation", benefit: "Anxiety relief & pain reduction.", description: "The lowest frequency provides a stable foundation for manifestation." },
     { hz: 285, label: "Tissue Regeneration", benefit: "Heals internal organs & energy fields.", description: "Restores the blueprint of homeostatic health." },
     { hz: 396, label: "Fear Dissolver", benefit: "Liberates guilt & removes blockages.", description: "Assists in letting go of past events holding your vibration back." },
     { hz: 417, label: "Change Facilitator", benefit: "Undoing negative situations.", description: "Clears traumatic experiences and facilitates conscious change." },
-    { hz: 432, label: "Earth Resonance", benefit: "Universal harmony & deep connection.", description: "Alumni with the mathematical laws of nature." },
+    { hz: 432, label: "Earth Resonance", benefit: "Universal harmony & deep connection.", description: "Aligns with the mathematical laws of nature." },
     { hz: 528, label: "DNA Repair", benefit: "Transformation & Miracles (Love).", description: "The core miracle frequency representing DNA integrity." },
     { hz: 639, label: "Unified Connection", benefit: "Enhances relationships & harmony.", description: "Promotes communication, understanding, and love." },
-    { hz: 741, label: "Conscious Awakening", benefit: "Intuition & cleaner living.", description: "Cleans the cell of toxins and emotional debris." },
+    { hz: 741, label: "Conscious Awakening", benefit: "Intuition & cleaner living.", description: "Cleans the cells of toxins and emotional debris." },
     { hz: 852, label: "Divine Order", benefit: "Spiritual awareness & intuition.", description: "Awakens the ability to see through illusions." },
     { hz: 963, label: "God Frequency", benefit: "Oneness & spiritual enlightenment.", description: "Direct connection to source and divine consciousness." }
   ];
 
   return (
     <div className="max-w-5xl mx-auto px-4 lg:px-0 space-y-10">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 text-center md:text-left">
         <div>
-          <h3 className="text-3xl lg:text-4xl font-black mb-3 tracking-tight text-white italic">The Frequency Vault</h3>
-          <p className="text-stardust/40 font-medium leading-relaxed max-w-2xl italic">"If you want to find the secrets of the universe, think in terms of energy, frequency and vibration." — Nikola Tesla</p>
+          <h3 className="text-4xl lg:text-5xl font-black mb-3 tracking-tight text-white italic">The Resonance Vault</h3>
+          <p className="text-stardust/40 font-medium leading-relaxed max-w-2xl italic">
+            "We weave high-vibrational solfeggio frequencies to align your entire energy system with universal geometry."
+          </p>
         </div>
       </div>
 
-      {/* Visualizer synthesis card */}
-      <SolfeggioVisualizer activeHz={activeHz} />
+      {/* Visualizer synthesis card - synced with active wave */}
+      <SolfeggioVisualizer activeHz={activeHz} onToggle={onToggle} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
+      {/* RENDER HARMONIC FREQUENCIES PANEL */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-40">
         {frequencies.map((f, i) => (
           <motion.div 
             key={f.hz}
@@ -1876,7 +2014,7 @@ const SonicView = memo(({ activeHz, onToggle, isMobile }: { activeHz: number | n
             whileTap={{ scale: 0.98 }}
             onClick={() => onToggle(f.hz)}
             className={`p-8 rounded-[2rem] border transition-all cursor-pointer relative overflow-hidden group ${
-              activeHz === f.hz 
+              activeHz === f.hz
                 ? 'bg-emerald-500/20 shadow-[0_20px_40px_rgba(16,185,129,0.2)] border-emerald-400' 
                 : 'bg-white/5 border-white/10 hover:border-emerald-500/30'
             }`}
@@ -1913,7 +2051,7 @@ const SonicView = memo(({ activeHz, onToggle, isMobile }: { activeHz: number | n
       </div>
     </div>
   );
-});
+};
 
 // --- View Sub-components ---
 
@@ -1939,7 +2077,7 @@ const SacredMetricsTooltip = ({ active, payload, label, mode }: any) => {
   return null;
 };
 
-const SacredMetrics = memo(({ habits, logs, transactions, isMobile }: { habits: Habit[], logs: HabitLog[], transactions: Transaction[], isMobile: boolean }) => {
+const SacredMetrics = ({ habits, logs, transactions, isMobile }: { habits: Habit[], logs: HabitLog[], transactions: Transaction[], isMobile: boolean }) => {
   const [mode, setMode] = useState<'habits' | 'wealth'>('habits');
   const [timeframe, setTimeframe] = useState<'week' | 'month' | 'year'>('week');
   
@@ -2156,9 +2294,9 @@ const SacredMetrics = memo(({ habits, logs, transactions, isMobile }: { habits: 
       </div>
     </motion.div>
   );
-});
+};
 
-const DashboardView = memo(({ 
+const DashboardView = ({ 
   habits, 
   habitLogs,
   desires, 
@@ -2465,11 +2603,10 @@ const DashboardView = memo(({
         </div>
       </motion.div>
     </div>
-
   );
-});
+};
 
-const ManifestView = memo(({ 
+const ManifestView = ({ 
   desires, 
   addDesire, 
   removeDesire, 
@@ -2548,9 +2685,9 @@ const ManifestView = memo(({
       </div>
     </div>
   );
-});
+};
 
-const VisionBoardView = memo(({ items, addItem, removeItem }: { items: VisionItem[], addItem: (c: string, u: string) => void, removeItem: (id: string) => void }) => {
+const VisionBoardView = ({ items, addItem, removeItem }: { items: VisionItem[], addItem: (c: string, u: string) => void, removeItem: (id: string) => void }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [caption, setCaption] = useState('');
   const [imageUrl, setImageUrl] = useState('');
@@ -2770,7 +2907,7 @@ const VisionBoardView = memo(({ items, addItem, removeItem }: { items: VisionIte
       </div>
     </div>
   );
-});
+};
 
 const TrendTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -2796,7 +2933,7 @@ const TrendTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-const WealthView = memo(({
+const WealthView = ({
   transactions,
   addTransaction,
   removeTransaction,
@@ -3155,9 +3292,9 @@ const WealthView = memo(({
       </div>
     </div>
   );
-});
+};
 
-const HabitsView = memo(({ 
+const HabitsView = ({ 
   habits, 
   habitLogs,
   addHabit, 
@@ -3368,7 +3505,6 @@ const HabitsView = memo(({
               <div className="grid grid-cols-1 gap-4">
                 {habits.map(habit => (
                   <div key={habit.id}>
-                    <StreakCalendar habitId={habit.id} logs={habitLogs} />
                     <motion.div 
                       key={habit.id}
                       whileHover={{ scale: 1.005 }}
@@ -3432,7 +3568,7 @@ const HabitsView = memo(({
       )}
     </div>
   );
-});
+};
 
 const IntensityTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -3477,7 +3613,7 @@ const HabitHistory = ({ habit, logs }: { habit: Habit, logs: HabitLog[] }) => {
         
         <div className="flex gap-3">
           <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-3 text-center min-w-[100px]">
-             <p className="text-[9px] font-bold uppercase tracking-widest text-white/60 mb-1">Rituals</p>
+             <p className="text-[9px] font-bold uppercase tracking-widest text-white/60 mb-1">Total Rituals</p>
              <p className="text-xl font-black text-white">{logs.length}</p>
           </div>
           <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-3 text-center min-w-[100px]">
@@ -3487,6 +3623,11 @@ const HabitHistory = ({ habit, logs }: { habit: Habit, logs: HabitLog[] }) => {
              </p>
           </div>
         </div>
+      </div>
+
+      <div className="space-y-4">
+        <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#34d399]">Consistency Matrix</h4>
+        <StreakCalendar habitId={habit.id} logs={logs} />
       </div>
 
       {logs.length > 1 && (
@@ -3684,7 +3825,7 @@ const SacredJournaling = ({ entries, onSave }: { entries: DiaryEntry[], onSave: 
   );
 };
 
-const AcademyView = memo(({ tier }: { tier: string }) => {
+const AcademyView = ({ tier }: { tier: string }) => {
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
 
   const lessons: (Lesson & { fullStep?: string[]; science?: string; image: string })[] = [
@@ -3916,7 +4057,7 @@ const AcademyView = memo(({ tier }: { tier: string }) => {
        </div>
     </div>
   );
-});
+};
 
 const PlaceholderView = ({ title, description }: { title: string, description: string }) => (
   <div className="py-20 lg:py-40 flex flex-col items-center justify-center text-center px-6">
@@ -3932,7 +4073,7 @@ const PlaceholderView = ({ title, description }: { title: string, description: s
   </div>
 );
 
-const PricingView = memo(({ setView, user, tier, isMobile }: { setView: (v: View) => void, user: User | null, tier: string, isMobile: boolean }) => {
+const PricingView = ({ setView, user, tier, isMobile }: { setView: (v: View) => void, user: User | null, tier: string, isMobile: boolean }) => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'lifetime'>('monthly');
   
@@ -3969,9 +4110,9 @@ const PricingView = memo(({ setView, user, tier, isMobile }: { setView: (v: View
   const getInrPrice = (planName: string) => {
     if (planName === 'Novice') return 0;
     if (planName === 'Sovereign') {
-      if (billingCycle === 'monthly') return 499;
-      if (billingCycle === 'yearly') return 2999;
-      return 6999;
+      if (billingCycle === 'monthly') return 99;
+      if (billingCycle === 'yearly') return 799;
+      return 1999;
     }
     return 0;
   };
@@ -3979,9 +4120,9 @@ const PricingView = memo(({ setView, user, tier, isMobile }: { setView: (v: View
   const getUsdPrice = (planName: string) => {
     if (planName === 'Novice') return '0';
     if (planName === 'Sovereign') {
-      if (billingCycle === 'monthly') return '9.99';
-      if (billingCycle === 'yearly') return '59.99';
-      return '199.99';
+      if (billingCycle === 'monthly') return '5.00';
+      if (billingCycle === 'yearly') return '49.00';
+      return '149.00';
     }
     return '0';
   };
@@ -4472,4 +4613,4 @@ const PricingView = memo(({ setView, user, tier, isMobile }: { setView: (v: View
   }
 
   return pricingContent;
-});
+};
