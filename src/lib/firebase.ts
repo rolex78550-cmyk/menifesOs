@@ -3,6 +3,7 @@ import {
   getAuth, 
   GoogleAuthProvider, 
   signInWithPopup, 
+  signInAnonymously,
   onAuthStateChanged, 
   User, 
   updateProfile,
@@ -77,6 +78,17 @@ export const loginWithGoogle = async () => {
     } else {
       alert("Login failed: " + (error.message || "Unknown error"));
     }
+    throw error;
+  }
+};
+
+export const loginAnonymously = async () => {
+  try {
+    const result = await signInAnonymously(auth);
+    return result;
+  } catch (error: any) {
+    console.error("Anonymous sign-in failed:", error);
+    alert("Connection Error: " + (error.message || "Unknown error"));
     throw error;
   }
 };

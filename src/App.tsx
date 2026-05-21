@@ -22,7 +22,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db, loginWithGoogle, logout, handleFirestoreError, OperationType, testConnection, updateProfile } from './lib/firebase';
+import { auth, db, loginWithGoogle, loginAnonymously, logout, handleFirestoreError, OperationType, testConnection, updateProfile } from './lib/firebase';
 
 const playDivineSound = () => {
   try {
@@ -354,7 +354,7 @@ const Sidebar = ({ currentView, setView, tier, isMobile }: { currentView: View, 
   ];
 
   return (
-    <div className="w-full lg:w-72 fixed bottom-0 left-0 right-0 lg:top-0 lg:left-0 lg:bottom-0 lg:h-screen bg-[#000105]/95 lg:bg-[#000105] backdrop-blur-xl z-[100] border-t lg:border-t-0 lg:border-r border-emerald-500/10 shadow-[0_-10px_40px_rgba(0,0,0,0.8)] lg:shadow-none safe-bottom flex lg:flex-col px-4 py-2 lg:px-6 lg:py-10">
+    <div className="w-full lg:w-72 fixed bottom-0 left-0 right-0 lg:top-0 lg:left-0 lg:bottom-0 lg:h-screen bg-black backdrop-blur-xl z-[100] border-t lg:border-t-0 lg:border-r border-emerald-500/10 shadow-[0_-10px_40px_rgba(0,0,0,0.8)] lg:shadow-none safe-bottom flex lg:flex-col px-4 py-2 lg:px-6 lg:py-10">
       <div className="hidden lg:flex items-center gap-3 mb-12 px-2 group cursor-pointer" onClick={() => setView('dashboard')}>
         <div className="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-2xl shadow-emerald-500/20 group-hover:rotate-12 transition-transform">
           <Infinity className="w-6 h-6 text-white" />
@@ -367,22 +367,32 @@ const Sidebar = ({ currentView, setView, tier, isMobile }: { currentView: View, 
 
       <motion.nav 
         layout={!isMobile}
-        className="flex lg:flex-col gap-1 sm:gap-1.5 lg:gap-2 flex-grow overflow-x-auto lg:overflow-x-visible no-scrollbar p-1 rounded-2xl lg:bg-emerald-500/5 border border-emerald-500/5 lg:border-emerald-500/10"
+        className="flex lg:flex-col gap-1.5 sm:gap-2 flex-grow overflow-x-auto lg:overflow-x-visible no-scrollbar p-1 rounded-2xl relative z-20"
       >
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setView(item.id as View)}
-            className={`flex flex-col lg:flex-row items-center gap-1 lg:gap-3 px-4 lg:px-4 py-1.5 lg:py-3.5 rounded-xl text-[9px] lg:text-sm font-black lg:font-bold transition-all whitespace-nowrap lg:whitespace-normal shrink-0 ${
-              currentView === item.id 
-                ? 'bg-emerald-500 text-white shadow-lg' 
-                : 'text-stardust/40 hover:bg-emerald-500/10 hover:text-emerald-400 active:scale-95'
-            }`}
-          >
-            <item.icon className={`w-4.5 h-4.5 lg:w-4 lg:h-4 ${currentView === item.id ? 'scale-110' : ''}`} />
-            <span className="block uppercase tracking-tighter lg:tracking-normal lg:normal-case">{item.label}</span>
-          </button>
-        ))}
+        {menuItems.map((item) => {
+          const isActive = currentView === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setView(item.id as View)}
+              className={`flex flex-col lg:flex-row items-center gap-1 lg:gap-3 px-5 lg:px-6 py-2.5 lg:py-4 rounded-2xl text-[9px] lg:text-xs font-black transition-all whitespace-nowrap lg:whitespace-normal shrink-0 relative group ${
+                isActive 
+                  ? 'text-white' 
+                  : 'text-white/20 hover:text-white/60'
+              }`}
+            >
+              {isActive && (
+                <motion.div 
+                  layoutId="sidebarActive"
+                  className="absolute inset-0 bg-white shadow-2xl rounded-2xl border border-white/10"
+                  transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                />
+              )}
+              <item.icon className={`w-4.5 h-4.5 lg:w-4 lg:h-4 relative z-10 transition-transform duration-500 ${isActive ? 'text-black scale-110' : 'group-hover:scale-110'}`} />
+              <span className={`block uppercase tracking-widest relative z-10 font-black italic ${isActive ? 'text-black font-black' : ''}`}>{item.label}</span>
+            </button>
+          );
+        })}
       </motion.nav>
 
       <div className="hidden lg:block pt-6 border-t border-emerald-500/10 mt-auto">
@@ -424,9 +434,9 @@ const CosmicBackground = ({ isMobile }: { isMobile?: boolean }) => {
   }, [activeIsMobile]);
 
   return (
-    <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none bg-[#000105]">
+    <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none bg-black">
       {/* Deep Space Dust Layers */}
-      <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] will-change-transform transform-gpu" />
+      <div className="absolute inset-0 opacity-15 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] will-change-transform transform-gpu" />
       
       {/* Infinite Star Field - Far Layer */}
       <div className="absolute inset-[-100vh] animate-star-move will-change-transform transform-gpu" style={{ '--duration': '200s' } as any}>
@@ -559,29 +569,65 @@ export default function App() {
     window.addEventListener('unhandledrejection', handleRejection);
     return () => window.removeEventListener('unhandledrejection', handleRejection);
   }, []);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<{ tier: string, subscriptionExpiry?: any } | null>(null);
+  
+  const updateOfflineProfile = (tierName: string, expiryDate?: Date) => {
+    const defaultExpiry = expiryDate || new Date(Date.now() + 365 * 24 * 3600 * 1000);
+    const updatedProfile = {
+      tier: tierName,
+      subscriptionExpiry: defaultExpiry.toISOString()
+    };
+    localStorage.setItem('vibe_os_guest_profile', JSON.stringify(updatedProfile));
+    setUserProfile(updatedProfile);
+  };
+
   const [loading, setLoading] = useState(true);
+  const [isSigningIn, setIsSigningIn] = useState(false);
   const [habits, setHabits] = useState<Habit[]>([]);
+
+  // 1-Day (24-Hour) trial logic with real-time countdown
+  const [currentTime, setCurrentTime] = useState(Date.now());
+  const [dismissedWarning, setDismissedWarning] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const trialStartTime = useMemo(() => {
+    if (!user) return Date.now();
+    const localKey = `vibe_os_trial_start_${user.uid}`;
+    const saved = localStorage.getItem(localKey);
+    if (saved) {
+      return parseInt(saved, 10);
+    }
+    let startTime = Date.now();
+    if (user.metadata && user.metadata.creationTime) {
+      startTime = new Date(user.metadata.creationTime).getTime();
+    }
+    localStorage.setItem(localKey, startTime.toString());
+    return startTime;
+  }, [user]);
+
+  const trialDurationMs = 24 * 60 * 60 * 1000; // 24 hours
+  const trialExpiryTime = trialStartTime + trialDurationMs;
+  const timeLeftMs = Math.max(0, trialExpiryTime - currentTime);
 
   // Check if subscription is still valid or within free trial
   const isTierActive = useMemo(() => {
     if (!userProfile) return false;
-    if (userProfile.tier !== 'Novice') return true; // Already subscribed
+    if (userProfile.tier !== 'Novice') return true; // Already subscribed or higher tier
 
-    // Check for 7-day trial
-    if (user && user.metadata && user.metadata.creationTime) {
-      const creationTime = new Date(user.metadata.creationTime).getTime();
-      const now = new Date().getTime();
-      const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
-      if (now - creationTime < sevenDaysInMs) {
-        return true; 
-      }
+    // Novice users are active if their 1-day trial is active
+    if (timeLeftMs > 0) {
+      return true;
     }
-    
+
     if (!userProfile.subscriptionExpiry) return false;
     
-    // ... (Keep expiry logic)
     const now = new Date().getTime();
     let expiryTime = 0;
     
@@ -594,7 +640,7 @@ export default function App() {
     }
     
     return now < expiryTime;
-  }, [userProfile, user]);
+  }, [userProfile, timeLeftMs]);
 
 
   const activeTier = isTierActive ? (userProfile?.tier || 'Novice') : 'Novice';
@@ -629,6 +675,18 @@ export default function App() {
   useEffect(() => {
     if (!user) {
       setUserProfile(null);
+      return;
+    }
+
+    if (user.isGuest) {
+      const savedProfile = localStorage.getItem('vibe_os_guest_profile');
+      if (savedProfile) {
+        setUserProfile(JSON.parse(savedProfile));
+      } else {
+        const guestProj = { tier: 'Novice' };
+        localStorage.setItem('vibe_os_guest_profile', JSON.stringify(guestProj));
+        setUserProfile(guestProj);
+      }
       return;
     }
 
@@ -809,19 +867,55 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [view]);
 
+  const handleAppLogout = async () => {
+    localStorage.removeItem('vibe_os_guest_user');
+    localStorage.removeItem('vibe_os_guest_profile');
+    localStorage.removeItem('vibe_os_guest_habits');
+    localStorage.removeItem('vibe_os_guest_habit_logs');
+    localStorage.removeItem('vibe_os_guest_desires');
+    localStorage.removeItem('vibe_os_guest_vision_items');
+    localStorage.removeItem('vibe_os_guest_diary_entries');
+    localStorage.removeItem('vibe_os_guest_transactions');
+    setUser(null);
+    try {
+      await logout();
+    } catch (e) {
+      console.error("Signout error:", e);
+    }
+  };
+
   useEffect(() => {
     try {
       testConnection();
       const unsubscribe = onAuthStateChanged(auth, (u) => {
-        setUser(u);
-        setLoading(false);
+        if (u) {
+          localStorage.removeItem('vibe_os_guest_user');
+          setUser(u);
+          setLoading(false);
+        } else {
+          const savedGuest = localStorage.getItem('vibe_os_guest_user');
+          if (savedGuest) {
+            setUser(JSON.parse(savedGuest));
+          } else {
+            setUser(null);
+          }
+          setLoading(false);
+        }
       }, (err) => {
         console.error("Auth change error:", err);
+        const savedGuest = localStorage.getItem('vibe_os_guest_user');
+        if (savedGuest) {
+          setUser(JSON.parse(savedGuest));
+        }
         setLoading(false);
       });
       return () => unsubscribe();
     } catch (e) {
       console.error("Auth init error:", e);
+      const savedGuest = localStorage.getItem('vibe_os_guest_user');
+      if (savedGuest) {
+        setUser(JSON.parse(savedGuest));
+      }
       setLoading(false);
     }
   }, []);
@@ -832,6 +926,33 @@ export default function App() {
       setHabits([]);
       return;
     }
+
+    if (user.isGuest) {
+      const saved = localStorage.getItem('vibe_os_guest_habits');
+      if (saved) {
+        setHabits(JSON.parse(saved));
+      } else {
+        // Build initial mock list of habits for Guest so they aren't empty!
+        const initialHabits: Habit[] = [
+          {
+            id: 'habit_1',
+            name: 'Universe Reciprocity Log',
+            streak: 3,
+            completed: false
+          },
+          {
+            id: 'habit_2',
+            name: '528Hz Meditation Alignment',
+            streak: 5,
+            completed: true
+          }
+        ];
+        localStorage.setItem('vibe_os_guest_habits', JSON.stringify(initialHabits));
+        setHabits(initialHabits);
+      }
+      return;
+    }
+
     const q = query(collection(db, 'habits'), where('ownerId', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Habit));
@@ -849,6 +970,26 @@ export default function App() {
       const todayString = now.toDateString(); 
       
       let needsReset = false;
+
+      if (user.isGuest) {
+        const updatedHabits = habits.map(habit => {
+          if (habit.completed && habit.updatedAt) {
+            const dateObj = new Date(habit.updatedAt as any);
+            const lastUpdateDate = dateObj.toDateString();
+            if (lastUpdateDate !== todayString) {
+              needsReset = true;
+              return { ...habit, completed: false, updatedAt: new Date().toISOString() };
+            }
+          }
+          return habit;
+        });
+        if (needsReset) {
+          localStorage.setItem('vibe_os_guest_habits', JSON.stringify(updatedHabits));
+          setHabits(updatedHabits);
+        }
+        return;
+      }
+
       const batch = writeBatch(db);
 
       habits.forEach(habit => {
@@ -889,6 +1030,13 @@ export default function App() {
       setHabitLogs([]);
       return;
     }
+
+    if (user.isGuest) {
+      const saved = localStorage.getItem('vibe_os_guest_habit_logs');
+      setHabitLogs(saved ? JSON.parse(saved) : []);
+      return;
+    }
+
     const q = query(collection(db, 'habit_logs'), where('ownerId', '==', user.uid), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HabitLog));
@@ -903,6 +1051,13 @@ export default function App() {
       setDesires([]);
       return;
     }
+
+    if (user.isGuest) {
+      const saved = localStorage.getItem('vibe_os_guest_desires');
+      setDesires(saved ? JSON.parse(saved) : []);
+      return;
+    }
+
     const q = query(collection(db, 'desires'), where('ownerId', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Desire));
@@ -917,6 +1072,13 @@ export default function App() {
       setVisionItems([]);
       return;
     }
+
+    if (user.isGuest) {
+      const saved = localStorage.getItem('vibe_os_guest_vision_items');
+      setVisionItems(saved ? JSON.parse(saved) : []);
+      return;
+    }
+
     const q = query(collection(db, 'vision_items'), where('ownerId', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VisionItem));
@@ -931,6 +1093,13 @@ export default function App() {
       setDiaryEntries([]);
       return;
     }
+
+    if (user.isGuest) {
+      const saved = localStorage.getItem('vibe_os_guest_diary_entries');
+      setDiaryEntries(saved ? JSON.parse(saved) : []);
+      return;
+    }
+
     const q = query(collection(db, 'diary_entries'), where('ownerId', '==', user.uid), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DiaryEntry));
@@ -945,6 +1114,13 @@ export default function App() {
       setTransactions([]);
       return;
     }
+
+    if (user.isGuest) {
+      const saved = localStorage.getItem('vibe_os_guest_transactions');
+      setTransactions(saved ? JSON.parse(saved) : []);
+      return;
+    }
+
     const q = query(collection(db, 'transactions'), where('ownerId', '==', user.uid), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
@@ -966,6 +1142,14 @@ export default function App() {
           colors: ['#f97316', '#fbbf24', '#ffffff']
         });
       }
+
+      if (user.isGuest) {
+        const updated = desires.map(d => d.id === id ? { ...d, isAchieved: !d.isAchieved, updatedAt: new Date().toISOString() } : d);
+        localStorage.setItem('vibe_os_guest_desires', JSON.stringify(updated));
+        setDesires(updated);
+        return;
+      }
+
       await updateDoc(doc(db, 'desires', id), {
         isAchieved: !desire.isAchieved,
         updatedAt: serverTimestamp()
@@ -986,6 +1170,13 @@ export default function App() {
         setCompletingHabitId(id);
       } else {
         // Un-marking
+        if (user.isGuest) {
+          const updated = habits.map(h => h.id === id ? { ...h, completed: false, streak: Math.max(0, h.streak - 1), updatedAt: new Date().toISOString() } : h);
+          localStorage.setItem('vibe_os_guest_habits', JSON.stringify(updated));
+          setHabits(updated);
+          return;
+        }
+
         await updateDoc(doc(db, 'habits', id), {
           completed: false,
           streak: Math.max(0, habit.streak - 1),
@@ -1003,6 +1194,33 @@ export default function App() {
     if (!habit) return;
 
     try {
+      if (user.isGuest) {
+        const log = {
+          id: 'log_' + Date.now(),
+          habitId,
+          ownerId: user.uid,
+          timestamp: new Date().toISOString(),
+          ...metrics
+        };
+        const logs = [log, ...habitLogs];
+        localStorage.setItem('vibe_os_guest_habit_logs', JSON.stringify(logs));
+        setHabitLogs(logs);
+
+        const updatedHabits = habits.map(h => h.id === habitId ? { ...h, completed: true, streak: h.streak + 1, updatedAt: new Date().toISOString() } : h);
+        localStorage.setItem('vibe_os_guest_habits', JSON.stringify(updatedHabits));
+        setHabits(updatedHabits);
+
+        confetti({
+          particleCount: 30,
+          spread: 50,
+          origin: { y: 0.8 },
+          colors: ['#f97316', '#ffffff']
+        });
+
+        setCompletingHabitId(null);
+        return;
+      }
+
       await addDoc(collection(db, 'habit_logs'), {
         habitId,
         ownerId: user.uid,
@@ -1032,6 +1250,22 @@ export default function App() {
   const addDesire = async (text: string) => {
     if (!user || !text) return;
     try {
+      if (user.isGuest) {
+        const item = {
+          id: 'desire_' + Date.now(),
+          text,
+          category: 'Personal',
+          date: new Date().toISOString().split('T')[0],
+          isAchieved: false,
+          ownerId: user.uid,
+          updatedAt: new Date().toISOString()
+        };
+        const items = [item, ...desires];
+        localStorage.setItem('vibe_os_guest_desires', JSON.stringify(items));
+        setDesires(items);
+        return;
+      }
+
       await addDoc(collection(db, 'desires'), {
         text,
         category: 'Personal',
@@ -1048,6 +1282,13 @@ export default function App() {
   const removeDesire = async (id: string) => {
     if (!user) return;
     try {
+      if (user.isGuest) {
+        const items = desires.filter(d => d.id !== id);
+        localStorage.setItem('vibe_os_guest_desires', JSON.stringify(items));
+        setDesires(items);
+        return;
+      }
+
       await deleteDoc(doc(db, 'desires', id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `desires/${id}`);
@@ -1057,6 +1298,22 @@ export default function App() {
   const addHabit = async (name: string, reminderTime: string) => {
     if (!user) return;
     try {
+      if (user.isGuest) {
+        const item = {
+          id: 'habit_' + Date.now(),
+          name,
+          streak: 0,
+          completed: false,
+          reminderTime,
+          ownerId: user.uid,
+          updatedAt: new Date().toISOString()
+        };
+        const items = [item, ...habits];
+        localStorage.setItem('vibe_os_guest_habits', JSON.stringify(items));
+        setHabits(items);
+        return;
+      }
+
       await addDoc(collection(db, 'habits'), {
         name,
         streak: 0,
@@ -1073,6 +1330,13 @@ export default function App() {
   const updateHabit = async (id: string, name: string, reminderTime: string) => {
     if (!user) return;
     try {
+      if (user.isGuest) {
+        const items = habits.map(h => h.id === id ? { ...h, name, reminderTime, updatedAt: new Date().toISOString() } : h);
+        localStorage.setItem('vibe_os_guest_habits', JSON.stringify(items));
+        setHabits(items);
+        return;
+      }
+
       await updateDoc(doc(db, 'habits', id), {
         name,
         reminderTime,
@@ -1086,6 +1350,13 @@ export default function App() {
   const removeHabit = async (id: string) => {
     if (!user) return;
     try {
+      if (user.isGuest) {
+        const items = habits.filter(h => h.id !== id);
+        localStorage.setItem('vibe_os_guest_habits', JSON.stringify(items));
+        setHabits(items);
+        return;
+      }
+
       await deleteDoc(doc(db, 'habits', id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `habits/${id}`);
@@ -1095,6 +1366,20 @@ export default function App() {
   const addVisionItem = async (caption: string, imageUrl: string) => {
     if (!user) return;
     try {
+      if (user.isGuest) {
+        const item = {
+          id: 'vision_' + Date.now(),
+          caption,
+          imageUrl,
+          ownerId: user.uid,
+          updatedAt: new Date().toISOString()
+        };
+        const items = [item, ...visionItems];
+        localStorage.setItem('vibe_os_guest_vision_items', JSON.stringify(items));
+        setVisionItems(items);
+        return;
+      }
+
       await addDoc(collection(db, 'vision_items'), {
         caption,
         imageUrl,
@@ -1109,6 +1394,13 @@ export default function App() {
   const removeVisionItem = async (id: string) => {
     if (!user) return;
     try {
+      if (user.isGuest) {
+        const items = visionItems.filter(v => v.id !== id);
+        localStorage.setItem('vibe_os_guest_vision_items', JSON.stringify(items));
+        setVisionItems(items);
+        return;
+      }
+
       await deleteDoc(doc(db, 'vision_items', id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `vision_items/${id}`);
@@ -1118,6 +1410,20 @@ export default function App() {
   const addDiaryEntry = async (content: string, method: 'free' | '369' | '555') => {
     if (!user || !content.trim()) return;
     try {
+      if (user.isGuest) {
+        const item = {
+          id: 'diary_' + Date.now(),
+          content,
+          method,
+          ownerId: user.uid,
+          timestamp: new Date().toISOString()
+        };
+        const items = [item, ...diaryEntries];
+        localStorage.setItem('vibe_os_guest_diary_entries', JSON.stringify(items));
+        setDiaryEntries(items);
+        return;
+      }
+
       await addDoc(collection(db, 'diary_entries'), {
         content,
         method,
@@ -1132,6 +1438,22 @@ export default function App() {
   const addTransaction = async (type: 'income' | 'expense', amount: number, label: string, category: string) => {
     if (!user || !amount || !label) return;
     try {
+      if (user.isGuest) {
+        const item = {
+          id: 'transaction_' + Date.now(),
+          type,
+          amount: Number(amount),
+          label,
+          category,
+          ownerId: user.uid,
+          timestamp: new Date().toISOString()
+        };
+        const items = [item, ...transactions];
+        localStorage.setItem('vibe_os_guest_transactions', JSON.stringify(items));
+        setTransactions(items);
+        return;
+      }
+
       await addDoc(collection(db, 'transactions'), {
         type,
         amount: Number(amount),
@@ -1148,6 +1470,13 @@ export default function App() {
   const removeTransaction = async (id: string) => {
     if (!user) return;
     try {
+      if (user.isGuest) {
+        const items = transactions.filter(t => t.id !== id);
+        localStorage.setItem('vibe_os_guest_transactions', JSON.stringify(items));
+        setTransactions(items);
+        return;
+      }
+
       await deleteDoc(doc(db, 'transactions', id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `transactions/${id}`);
@@ -1220,30 +1549,204 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-cosmic-black text-stardust flex flex-col items-center justify-center p-6 relative overflow-hidden">
+      <div className="min-h-screen bg-[#030708] text-stardust flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden select-none">
+        {/* Dynamic Space Background & Rotating Galactic Dust */}
         <CosmicBackground isMobile={isMobile} />
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="relative z-10 text-center max-w-md"
-        >
-          <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center shadow-2xl shadow-white/20 mx-auto mb-8">
-            <Sparkles className="w-10 h-10 text-cosmic-black" />
+        
+        {/* Cinematic Neon Aura Background Glows (Simulated Nebula Video) */}
+        <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+          <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-emerald-500/[0.03] blur-[150px] rounded-full animate-pulse-slow" />
+          <div className="absolute bottom-1/4 right-1/4 w-[600px] h-[600px] bg-violet-500/[0.02] blur-[200px] rounded-full animate-pulse-slow" style={{ animationDelay: '4s' }} />
+        </div>
+
+        {/* Cinematic Kinetic Stargate / Rotating Planetary Circles (Real-time Video feeling) */}
+        {!isMobile && (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] pointer-events-none opacity-20 z-0">
+            {/* Outer Ring */}
+            <motion.div 
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 60, ease: 'linear' }}
+              className="absolute inset-0 border border-white/5 rounded-full border-dashed"
+            />
+            {/* Mid Ring */}
+            <motion.div 
+              animate={{ rotate: -360 }}
+              transition={{ repeat: Infinity, duration: 40, ease: 'linear' }}
+              className="absolute inset-[100px] border border-emerald-500/10 rounded-full"
+            >
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-emerald-400/40 blur-xs" />
+            </motion.div>
+            {/* Inner Glowing Ring */}
+            <motion.div 
+              animate={{ rotate: 180, scale: [1, 1.05, 1] }}
+              transition={{ rotate: { repeat: Infinity, duration: 25, ease: 'linear' }, scale: { repeat: Infinity, duration: 8, ease: 'easeInOut' } }}
+              className="absolute inset-[200px] border border-dashed border-emerald-500/5 rounded-full flex items-center justify-center"
+            >
+              <div className="w-[150px] h-[150px] rounded-full bg-emerald-500/[0.01] blur-md" />
+            </motion.div>
           </div>
-          <h1 className="text-4xl lg:text-6xl font-black mb-4 tracking-tighter text-white">Vibe OS</h1>
-          <p className="text-stardust/60 font-medium mb-10 leading-relaxed">Your frequency determines your reality. Synchronize with the universal source to begin engineering your destiny.</p>
-          <button 
-            onClick={async () => {
-              try {
-                await loginWithGoogle();
-              } catch (e: any) {
-                alert("Auth Error: " + (e.message || "Unknown error"));
-              }
-            }}
-            className="w-full bg-white text-cosmic-black px-8 py-5 rounded-3xl font-black uppercase text-xs tracking-widest hover:scale-105 active:scale-95 transition-all shadow-white/10 shadow-2xl flex items-center justify-center gap-3"
-          >
-            Authenticate with Google
-          </button>
+        )}
+
+        {/* Upper Brand / Grid Health Stats */}
+        <div className="absolute top-6 left-6 right-6 flex items-center justify-between z-20 pointer-events-none max-w-7xl mx-auto opacity-60">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-emerald-400 animate-spin" style={{ animationDuration: '6s' }} />
+            <span className="font-mono text-[9px] font-black uppercase tracking-[0.3em] text-white">Vibe OS • Gateway v2.4</span>
+          </div>
+          <div className="flex items-center gap-4 text-right font-mono text-[8px] sm:text-[9px] font-bold text-stardust/40 uppercase tracking-widest">
+            <span className="hidden sm:inline">Vibrational Stability: 99.8%</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Divine Core Online</span>
+            </div>
+          </div>
+        </div>
+
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95, y: 15 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.8, type: 'spring', damping: 20 }}
+          className="relative z-10 w-full max-w-[440px] px-4"
+        >
+          {/* Card Ambient Aura Glow (subtle for white card depth) */}
+          <div className="absolute inset-x-8 -top-8 h-40 bg-emerald-500/10 blur-[60px] rounded-full pointer-events-none" />
+
+          {/* Premium White Container Card */}
+          <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 sm:p-10 shadow-[0_30px_100px_rgba(0,0,0,0.5)] relative overflow-hidden w-full text-slate-800">
+            <div className="absolute top-0 inset-x-0 h-[1.5px] bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent" />
+            
+            <AnimatePresence mode="wait">
+              {!isSigningIn ? (
+                <motion.div
+                  key="content"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="flex flex-col items-center text-center"
+                >
+                  {/* Floating Modern Brand Logo */}
+                  <motion.div 
+                    animate={{ y: [0, -4, 0] }}
+                    transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
+                    className="w-14 h-14 rounded-2xl bg-emerald-50/50 border border-emerald-100 flex items-center justify-center mb-6 relative group"
+                  >
+                    <div className="absolute inset-0 rounded-2xl border border-emerald-500/10 scale-125 animate-ping opacity-20 pointer-events-none" />
+                    <Sparkles className="w-6 h-6 text-emerald-600 group-hover:rotate-12 transition-transform duration-500" />
+                  </motion.div>
+
+                  {/* Standard Trust Badge */}
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 border border-slate-100 text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-4">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    Secure Quantum Portal
+                  </div>
+
+                  <h1 className="text-3xl sm:text-4xl font-extrabold mb-2.5 tracking-tight text-slate-900 leading-none">
+                    Welcome to Vibe OS
+                  </h1>
+                  
+                  <p className="text-slate-500 text-xs sm:text-[13px] font-medium leading-relaxed mb-8 max-w-[300px]">
+                    Track your daily rituals, manifest your visions, and align with your ultimate reality offline or synchronized.
+                  </p>
+
+                  <div className="flex flex-col gap-3.5 w-full">
+                    {/* Standard Cloud Sync Google Auth Option */}
+                    <button 
+                      onClick={async () => {
+                        try {
+                          setIsSigningIn(true);
+                          await loginWithGoogle();
+                        } catch (e: any) {
+                          setIsSigningIn(false);
+                        }
+                      }}
+                      className="w-full bg-white hover:bg-slate-50 text-slate-700 py-4 px-6 rounded-2xl font-bold text-sm tracking-wide shadow-sm hover:shadow-md border border-slate-200 transition-all flex items-center justify-center gap-3.5 cursor-pointer"
+                    >
+                      {/* Real Google Colored G Icon */}
+                      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
+                        <path
+                          fill="#EA4335"
+                          d="M12 5.04c1.61 0 3.06.55 4.2 1.64l3.15-3.15C17.45 1.68 14.93 1 12 1 7.35 1 3.4 3.65 1.48 7.5l3.69 2.87C6.04 6.84 8.78 5.04 12 5.04z"
+                        />
+                        <path
+                          fill="#4285F4"
+                          d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.47h6.44c-.28 1.47-1.11 2.71-2.36 3.55l3.68 2.85c2.15-1.98 3.36-4.9 3.36-8.51z"
+                        />
+                        <path
+                          fill="#FBBC05"
+                          d="M5.17 14.88c-.23-.69-.37-1.44-.37-2.21s.14-1.52.37-2.21L1.48 7.5C.54 9.39 0 11.53 0 13.8s.54 4.41 1.48 6.3l3.69-2.87c-.23-.69-.37-1.44-.37-2.21z"
+                        />
+                        <path
+                          fill="#34A853"
+                          d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.68-2.85c-1.1.74-2.51 1.18-4.28 1.18-3.22 0-5.96-1.8-6.93-4.63L1.48 16.5C3.4 20.35 7.35 23 12 23z"
+                        />
+                      </svg>
+                      Sign in with Google
+                    </button>
+
+                    {/* FAST TRACK LOGIN BYPASS - 1-click seamless anonymous access */}
+                    <motion.button 
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                      onClick={async () => {
+                        try {
+                          setIsSigningIn(true);
+                          // Artificial tiny delay for beautiful transition feel
+                          await new Promise(r => setTimeout(r, 900));
+                          await loginAnonymously();
+                        } catch (e: any) {
+                          setIsSigningIn(false);
+                        }
+                      }}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-4 px-6 rounded-2xl font-bold text-sm tracking-wide shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer border border-transparent"
+                    >
+                      <Zap className="w-4 h-4 fill-current text-white" />
+                      Continue as Guest
+                    </motion.button>
+                  </div>
+
+                  {/* Clean disclaimer/info */}
+                  <div className="mt-8 pt-5 border-t border-slate-100 w-full flex flex-col gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">
+                    <p>Secure cloud encryption • Instant setup</p>
+                  </div>
+
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="loader"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex flex-col items-center justify-center py-8 text-center"
+                >
+                  <p className="text-[10px] font-black uppercase tracking-[0.4em] text-emerald-600 animate-pulse mb-6">
+                    SYNCHRONIZING PROFILE...
+                  </p>
+
+                  <div className="w-20 h-20 rounded-full relative flex items-center justify-center mb-6">
+                    {/* Ring Animated Loaders */}
+                    <div className="absolute inset-0 rounded-full border border-dashed border-emerald-500/20 animate-spin" style={{ animationDuration: '3s' }} />
+                    <div className="absolute inset-2.5 rounded-full border border-dashed border-emerald-500/35 animate-spin" style={{ animationDuration: '2s', animationDirection: 'reverse' }} />
+                    <div className="absolute inset-5 rounded-full border border-emerald-500/50 animate-spin" style={{ animationDuration: '1s' }} />
+                    <Clock className="w-5 h-5 text-emerald-600 animate-pulse" />
+                  </div>
+
+                  <p className="text-slate-800 text-[13px] font-bold uppercase tracking-wider animate-pulse">
+                    Connecting to Grid
+                  </p>
+                  <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest mt-1 font-mono">
+                    Securing your cosmic matrix
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Clean space-themed footer detail */}
+          <div className="text-center mt-6">
+            <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.3em] italic">
+              "Reality is merely an illusion, albeit a very persistent one."
+            </p>
+          </div>
         </motion.div>
       </div>
     );
@@ -1251,6 +1754,16 @@ export default function App() {
 
   // View switch logic
   const renderView = () => {
+    if (userProfile?.tier === 'Novice' && timeLeftMs <= 0 && view !== 'pricing' && view !== 'terms' && view !== 'privacy') {
+      return (
+        <LockedTrialView 
+          setView={setView} 
+          logout={handleAppLogout}
+          desires={desires} 
+        />
+      );
+    }
+
     switch (view) {
       case 'dashboard': return (
         <DashboardView 
@@ -1282,8 +1795,8 @@ export default function App() {
         />
       );
       case 'academy': return <AcademyView tier={activeTier} />;
-      case 'pricing': return <PricingView setView={setView} user={user} tier={activeTier} isMobile={isMobile} />;
-      case 'settings': return <SettingsView setView={setView} user={user} tier={userProfile?.tier || 'Novice'} onToast={setActiveToast} expiry={userProfile?.subscriptionExpiry} />;
+      case 'pricing': return <PricingView setView={setView} user={user} tier={activeTier} isMobile={isMobile} updateOfflineProfile={updateOfflineProfile} />;
+      case 'settings': return <SettingsView setView={setView} user={user} tier={userProfile?.tier || 'Novice'} onToast={setActiveToast} expiry={userProfile?.subscriptionExpiry} onLogout={handleAppLogout} />;
       case 'terms': return <TermsView setView={setView} />;
       case 'privacy': return <PrivacyView setView={setView} />;
     }
@@ -1322,8 +1835,8 @@ export default function App() {
                 <span className="hidden lg:inline text-[10px] font-black uppercase tracking-[0.5em] text-emerald-500/50 pt-1.5 opacity-80 decoration-emerald-500 underline underline-offset-8">Vibe OS</span>
               </h2>
             </div>
-            <div className="md:hidden w-11 h-11 bg-white/5 rounded-2xl overflow-hidden border border-white/10 shrink-0 shadow-lg" onClick={logout}>
-               <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} alt="Avatar" referrerPolicy="no-referrer" />
+            <div className="md:hidden w-11 h-11 bg-white/5 rounded-2xl overflow-hidden border border-white/10 shrink-0 shadow-lg" onClick={handleAppLogout}>
+               <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid || 'guest_user'}`} alt="Avatar" referrerPolicy="no-referrer" />
             </div>
           </div>
           
@@ -1357,11 +1870,11 @@ export default function App() {
               <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.02] blur-2xl rounded-full translate-x-10 -translate-y-10 group-hover:bg-emerald-500/10 transition-all" />
             </motion.div>
 
-            <div className="bg-white/5 border border-white/10 p-2.5 lg:p-3 rounded-2xl text-stardust/40 relative hover:text-stardust hover:bg-white/10 transition-colors cursor-pointer shrink-0" onClick={logout}>
+            <div className="bg-white/5 border border-white/10 p-2.5 lg:p-3 rounded-2xl text-stardust/40 relative hover:text-stardust hover:bg-white/10 transition-colors cursor-pointer shrink-0" onClick={handleAppLogout}>
               <X className="w-4 h-4" />
             </div>
             <div className="w-10 h-10 lg:w-12 lg:h-12 bg-white/10 rounded-2xl overflow-hidden border border-white/10 ring-2 ring-white/10 shrink-0">
-               <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} alt="Avatar" referrerPolicy="no-referrer" />
+               <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid || 'guest_user'}`} alt="Avatar" referrerPolicy="no-referrer" />
             </div>
           </div>
         </header>
@@ -1457,11 +1970,79 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 5-Minute Warning Popup Overlay */}
+      <AnimatePresence>
+        {timeLeftMs > 0 && timeLeftMs <= 5 * 60 * 1000 && !dismissedWarning && userProfile?.tier === 'Novice' && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-[999]">
+            <motion.div
+              initial={{ scale: 0.95, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 20, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              className="bg-cosmic-black border border-emerald-500/30 rounded-[3rem] p-8 max-w-md w-full relative z-[1000] overflow-hidden shadow-[0_0_80px_rgba(16,185,129,0.15)] shadow-black/80"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-2xl rounded-full" />
+              
+              <div className="relative z-10 flex flex-col items-center text-center">
+                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-6">
+                  <Clock className="w-8 h-8 text-emerald-400 animate-pulse" />
+                </div>
+
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-black uppercase tracking-[0.4em] text-emerald-400 mb-4 italic">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  Trial Transition Sequence
+                </div>
+
+                <h3 className="text-2xl sm:text-3xl font-black text-white italic tracking-tighter uppercase leading-none mb-3">
+                  Alignment Bound
+                </h3>
+                
+                <div className="font-mono text-xl sm:text-2xl font-black text-emerald-400 mb-5 bg-emerald-500/5 px-4 py-2 rounded-xl tracking-widest border border-emerald-500/10">
+                  {(() => {
+                    const totalSecs = Math.floor(timeLeftMs / 1000);
+                    const mins = Math.floor((totalSecs % 3600) / 60);
+                    const secs = totalSecs % 60;
+                    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                  })()}
+                </div>
+
+                <p className="text-stardust/70 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-6 leading-relaxed italic">
+                  Your 1-Day Trial is about to end. The divine frequency generator requires constant reciprocity. 
+                  Skip below to continue with what remains of your single-day access, or anchor your reality fully before the portal snaps shut.
+                </p>
+
+                <div className="flex flex-col gap-3 w-full">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => {
+                      setView('pricing');
+                      setDismissedWarning(true);
+                    }}
+                    className="w-full py-4 rounded-[1.5rem] bg-emerald-500 text-white font-black uppercase text-[9px] tracking-[0.3em] italic border border-white/10 flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 transition-colors"
+                  >
+                    <Zap className="w-3.5 h-3.5 fill-current" />
+                    Elevate State Now
+                  </motion.button>
+
+                  <button
+                    onClick={() => setDismissedWarning(true)}
+                    className="w-full py-3.5 rounded-[1.5rem] bg-white/5 hover:bg-white/10 text-stardust/40 hover:text-white font-black uppercase text-[8px] tracking-[0.3em] italic transition-colors text-center border border-white/5"
+                  >
+                    Skip Trial Alert (Stay Lite)
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-const SettingsView = ({ setView, user, tier, onToast, expiry }: { setView: (v: View) => void, user: User | null, tier: string, onToast: (t: any) => void, expiry?: any }) => {
+const SettingsView = ({ setView, user, tier, onToast, expiry, onLogout }: { setView: (v: View) => void, user: any, tier: string, onToast: (t: any) => void, expiry?: any, onLogout: () => void }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [isUpdating, setIsUpdating] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -1551,93 +2132,92 @@ const SettingsView = ({ setView, user, tier, onToast, expiry }: { setView: (v: V
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* User Identity - Functional */}
-        <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden group md:col-span-2">
+        <div className="bg-black/40 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden group md:col-span-2 shadow-2xl backdrop-blur-xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none">
           <div className="relative z-10">
-            <h4 className="text-[10px] font-black uppercase tracking-widest text-stardust/40 mb-6 italic">Identity Frequency</h4>
-            <div className="flex flex-col md:flex-row items-start md:items-center gap-8">
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-8 italic">Identity Frequency</h4>
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-10">
               <div className="relative">
-                <div className="w-24 h-24 bg-white/10 rounded-3xl overflow-hidden border border-white/10 ring-8 ring-white/5">
+                <div className="w-28 h-28 bg-white/10 rounded-[2rem] overflow-hidden border border-white/10 ring-8 ring-white/5 shadow-2xl">
                   <img src={user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid}`} alt="Avatar" referrerPolicy="no-referrer" />
                 </div>
-                <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-emerald-500 rounded-xl border-4 border-cosmic-black flex items-center justify-center">
-                  <Activity className="w-3 h-3 text-white" />
+                <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-emerald-500 rounded-2xl border-4 border-black flex items-center justify-center shadow-lg">
+                  <Activity className="w-4 h-4 text-white" />
                 </div>
               </div>
               
               <form onSubmit={handleUpdateProfile} className="flex-grow w-full">
-                <div className="mb-4">
-                  <label className="block text-[8px] font-black uppercase tracking-widest text-stardust/30 mb-2">Manifestation Alias</label>
+                <div className="mb-6">
+                  <label className="block text-[9px] font-black uppercase tracking-widest text-white/30 mb-3 italic">Manifestation Alias</label>
                   <input 
                     type="text" 
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white font-bold focus:outline-none focus:border-white/30 transition-all"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white font-black italic uppercase tracking-tighter text-xl focus:outline-none focus:border-white/30 transition-all placeholder:text-white/5"
                     placeholder="Enter Alias..."
                   />
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-6">
                   <button 
                     type="submit"
                     disabled={isUpdating || displayName === user?.displayName}
-                    className="px-6 py-3 bg-white text-cosmic-black rounded-xl font-black uppercase text-[10px] tracking-widest hover:scale-105 active:scale-95 transition-all disabled:opacity-30 disabled:scale-100"
+                    className="px-8 py-4 bg-white text-black rounded-2xl font-black uppercase text-[10px] tracking-widest hover:scale-105 active:scale-95 transition-all disabled:opacity-30 disabled:scale-100 shadow-xl shadow-white/10"
                   >
                     {isUpdating ? 'Synchronizing...' : 'Update Alias'}
                   </button>
-                  {saveStatus === 'success' && <span className="text-emerald-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2"><CheckCircle2 className="w-3 h-3" /> Frequency Aligned</span>}
-                  {saveStatus === 'error' && <span className="text-red-400 text-[10px] font-black uppercase tracking-widest">Protocol Failed</span>}
+                  {saveStatus === 'success' && <span className="text-emerald-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 italic"><CheckCircle2 className="w-3.5 h-3.5" /> Frequency Aligned</span>}
                 </div>
               </form>
             </div>
           </div>
-          <div className="absolute -right-10 -bottom-10 w-60 h-60 bg-white/[0.02] blur-3xl rounded-full" />
+          <div className="absolute -right-10 -bottom-10 w-60 h-60 bg-emerald-500/5 blur-3xl rounded-full" />
         </div>
 
         {/* Current Standing */}
-        <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between">
+        <div className="bg-black/40 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between shadow-2xl backdrop-blur-xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none">
           <div>
-            <h4 className="text-[10px] font-black uppercase tracking-widest text-stardust/40 mb-6 italic">Evolution Tier</h4>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center border border-white/10">
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-8 italic">Evolution Tier</h4>
+            <div className="flex items-center gap-6 mb-6">
+              <div className="w-14 h-14 bg-white/5 rounded-[1.5rem] flex items-center justify-center border border-white/10 shadow-xl">
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
               <div>
-                <p className="text-xl font-black text-white italic uppercase tracking-tighter">{tier}</p>
-                <p className="text-[10px] font-bold text-stardust/20 uppercase tracking-widest">Current Resonant State</p>
+                <p className="text-3xl font-black text-white italic uppercase tracking-tighter leading-none mb-1">{tier}</p>
+                <p className="text-[10px] font-black text-white/20 uppercase tracking-widest italic">Current Resonant State</p>
               </div>
             </div>
             {expiry && tier !== 'Novice' && (
-              <p className="text-[9px] font-bold text-emerald-400/60 uppercase tracking-[0.2em] mb-4 italic">
+              <p className="text-[9px] font-black text-emerald-400/40 uppercase tracking-[0.2em] mb-6 italic bg-emerald-500/5 px-3 py-1 rounded-md border border-emerald-500/10 w-fit">
                 Manifestation Window Closes: {new Date(expiry.seconds ? expiry.seconds * 1000 : (expiry.toDate ? expiry.toDate() : expiry)).toLocaleDateString()}
               </p>
             )}
           </div>
           <button 
             onClick={() => setView('pricing')}
-            className="w-full py-4 bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all"
+            className="w-full py-5 bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all italic"
           >
             Manage Consciousness Tier
           </button>
         </div>
 
-        {/* Signal & Feedback */}
-        <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between">
+        {/* Signal & Calibration */}
+        <div className="bg-black/40 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between shadow-2xl backdrop-blur-xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none">
           <div>
-            <h4 className="text-[10px] font-black uppercase tracking-widest text-stardust/40 mb-6 italic">Signal Calibration</h4>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.1)]">
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-8 italic">Signal Calibration</h4>
+            <div className="flex items-center gap-6 mb-6">
+              <div className="w-14 h-14 bg-emerald-500/10 rounded-[1.5rem] flex items-center justify-center border border-emerald-500/20 shadow-xl">
                 <Bell className="w-6 h-6 text-emerald-400" />
               </div>
               <div>
-                <p className="text-sm font-black text-white italic uppercase tracking-tighter">Divine Alerts</p>
-                <p className="text-[10px] font-bold text-stardust/20 uppercase tracking-widest leading-tight">Reminders + 528Hz Sound</p>
+                <p className="text-xl font-black text-white italic uppercase tracking-tighter leading-none mb-1">Divine Alerts</p>
+                <p className="text-[10px] font-black text-white/20 uppercase tracking-widest italic">528Hz Quantum Reminders</p>
               </div>
             </div>
           </div>
           <button 
             onClick={handleTestSignal}
-            className="w-full py-4 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(16,185,129,0.1)]"
+            className="w-full py-5 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(16,185,129,0.1)] italic"
           >
-            <Zap className="w-3 h-3" /> Test Signal Frequency
+            <Zap className="w-3.5 h-3.5" /> Test Signal Frequency
           </button>
         </div>
 
@@ -1654,7 +2234,7 @@ const SettingsView = ({ setView, user, tier, onToast, expiry }: { setView: (v: V
                 <p className="text-[8px] font-bold text-stardust/20 uppercase tracking-widest">Reset all daily habits and streaks</p>
               </button>
               <button 
-                onClick={() => logout()}
+                onClick={onLogout}
                 className="w-full p-4 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl text-left transition-all group"
               >
                 <p className="text-[10px] font-black uppercase tracking-widest text-white">De-authenticate</p>
@@ -1975,79 +2555,86 @@ const SonicView = ({
   onToggle: (hz: number) => void, 
   isMobile: boolean
 }) => {
-  const frequencies = [
-    { hz: 174, label: "Quantum Foundation", benefit: "Anxiety relief & pain reduction.", description: "The lowest frequency provides a stable foundation for manifestation." },
-    { hz: 285, label: "Tissue Regeneration", benefit: "Heals internal organs & energy fields.", description: "Restores the blueprint of homeostatic health." },
-    { hz: 396, label: "Fear Dissolver", benefit: "Liberates guilt & removes blockages.", description: "Assists in letting go of past events holding your vibration back." },
-    { hz: 417, label: "Change Facilitator", benefit: "Undoing negative situations.", description: "Clears traumatic experiences and facilitates conscious change." },
-    { hz: 432, label: "Earth Resonance", benefit: "Universal harmony & deep connection.", description: "Aligns with the mathematical laws of nature." },
-    { hz: 528, label: "DNA Repair", benefit: "Transformation & Miracles (Love).", description: "The core miracle frequency representing DNA integrity." },
-    { hz: 639, label: "Unified Connection", benefit: "Enhances relationships & harmony.", description: "Promotes communication, understanding, and love." },
-    { hz: 741, label: "Conscious Awakening", benefit: "Intuition & cleaner living.", description: "Cleans the cells of toxins and emotional debris." },
-    { hz: 852, label: "Divine Order", benefit: "Spiritual awareness & intuition.", description: "Awakens the ability to see through illusions." },
-    { hz: 963, label: "God Frequency", benefit: "Oneness & spiritual enlightenment.", description: "Direct connection to source and divine consciousness." }
-  ];
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.play().catch(err => console.log("Video play blocked:", err));
+    }
+  }, []);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 lg:px-0 space-y-10">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 text-center md:text-left">
-        <div>
-          <h3 className="text-4xl lg:text-5xl font-black mb-3 tracking-tight text-white italic">The Resonance Vault</h3>
-          <p className="text-stardust/40 font-medium leading-relaxed max-w-2xl italic">
-            "We weave high-vibrational solfeggio frequencies to align your entire energy system with universal geometry."
-          </p>
+    <div className="max-w-6xl mx-auto px-4 lg:px-0">
+      <div className="relative w-full h-[320px] sm:h-[420px] lg:h-[480px] rounded-[3rem] overflow-hidden border border-white/10 shadow-2xl group group/sonic bg-black">
+        <video 
+          ref={videoRef}
+          autoPlay 
+          loop 
+          muted 
+          playsInline 
+          key="sonic-bg-video-final"
+          className="absolute inset-0 w-full h-full object-cover"
+        >
+          <source src="https://assets.mixkit.co/videos/preview/mixkit-stars-in-the-deep-space-deep-space-atmosphere-443-large.mp4" type="video/mp4" />
+          <source src="https://static.videezy.com/system/resources/previews/000/039/035/original/galactic-tide-loop.mp4" type="video/mp4" />
+        </video>
+        
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/30 pointer-events-none" />
+        
+        {/* Visually Stunning Energy Waves */}
+        <div className="absolute inset-x-0 bottom-0 top-1/4 pointer-events-none opacity-40 mix-blend-screen">
+          <svg className="w-full h-full" viewBox="0 0 1440 400" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="sonic-wave-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#10b981" stopOpacity="0" />
+                <stop offset="50%" stopColor="#34d399" stopOpacity="0.6" />
+                <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <motion.path
+              animate={{
+                d: [
+                  "M0 200 Q 360 150 720 200 T 1440 200 V 400 H 0 Z",
+                  "M0 200 Q 360 250 720 200 T 1440 200 V 400 H 0 Z",
+                  "M0 200 Q 360 150 720 200 T 1440 200 V 400 H 0 Z"
+                ]
+              }}
+              transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+              fill="url(#sonic-wave-grad)"
+              className="opacity-50"
+            />
+          </svg>
         </div>
-      </div>
-
-      {/* Visualizer synthesis card - synced with active wave */}
-      <SolfeggioVisualizer activeHz={activeHz} onToggle={onToggle} />
-
-      {/* RENDER HARMONIC FREQUENCIES PANEL */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-40">
-        {frequencies.map((f, i) => (
-          <motion.div 
-            key={f.hz}
-            initial={{ opacity: 0, scale: 0.95 }}
+        
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 z-10">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: i * 0.05 }}
-            whileHover={{ y: -5, scale: 1.02, borderColor: 'rgba(16,185,129,0.3)' }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => onToggle(f.hz)}
-            className={`p-8 rounded-[2rem] border transition-all cursor-pointer relative overflow-hidden group ${
-              activeHz === f.hz
-                ? 'bg-emerald-500/20 shadow-[0_20px_40px_rgba(16,185,129,0.2)] border-emerald-400' 
-                : 'bg-white/5 border-white/10 hover:border-emerald-500/30'
-            }`}
+            className="px-6 py-2 rounded-full bg-black/40 backdrop-blur-2xl border border-white/10 text-[9px] font-black uppercase tracking-[0.6em] text-emerald-400 mb-6 italic flex items-center gap-4 shadow-2xl"
           >
-            <div className={`absolute -right-10 -top-10 w-40 h-40 blur-[80px] rounded-full transition-opacity ${activeHz === f.hz ? 'bg-emerald-500/25 opacity-100' : 'bg-emerald-400/10 opacity-0 group-hover:opacity-100'}`} />
-            
-            <div className="relative z-10 flex flex-col justify-between h-full">
-              <div>
-                <div className="flex justify-between items-start mb-6">
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeHz === f.hz ? 'bg-emerald-400/20 text-emerald-400 border border-emerald-400/20' : 'bg-white/5 border border-white/10 text-emerald-400/60 group-hover:bg-emerald-500/10 group-hover:text-emerald-400'}`}>
-                    {activeHz === f.hz ? <Pause className="w-5 h-5 animate-pulse" /> : <Play className="w-5 h-5" />}
-                  </div>
-                  <div className="text-right">
-                    <span className={`text-4xl font-black tracking-tighter duration-300 ${activeHz === f.hz ? 'text-emerald-400' : 'text-white/60 group-hover:text-emerald-400'}`}>{f.hz}</span>
-                    <span className={`block text-[9px] font-black uppercase tracking-widest ${activeHz === f.hz ? 'text-emerald-400/40' : 'text-white/20'}`}>Hertz</span>
-                  </div>
-                </div>
-
-                <div className="space-y-1 mb-4">
-                  <span className="text-[10px] font-bold tracking-widest text-emerald-500/80 font-mono uppercase bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/10 inline-block">
-                    {getSolfeggioSyllable(f.hz).split(' ')[0]}
-                  </span>
-                  <h4 className={`text-xl font-black tracking-tight ${activeHz === f.hz ? 'text-white' : 'text-white group-hover:text-emerald-400'}`}>{f.label}</h4>
-                </div>
-                <p className={`text-xs font-bold uppercase tracking-widest mb-4 ${activeHz === f.hz ? 'text-emerald-400' : 'text-emerald-400/60'}`}>{f.benefit}</p>
-              </div>
-              
-              <p className={`text-[11px] leading-relaxed font-semibold ${activeHz === f.hz ? 'text-white/60' : 'text-white/40'}`}>
-                {f.description}
-              </p>
-            </div>
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+            Universal Transit Active
           </motion.div>
-        ))}
+          
+          <h2 className="text-4xl sm:text-6xl lg:text-8xl font-black text-white italic tracking-tighter uppercase leading-tight drop-shadow-[0_20px_50px_rgba(0,0,0,1)] px-6">
+            Cosmic <br /><span className="text-emerald-400">Harmony.</span>
+          </h2>
+        </div>
+
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-10 sm:gap-20 opacity-60 pointer-events-none">
+           <div className="flex flex-col items-center">
+             <span className="text-[9px] font-black uppercase tracking-[0.4em] text-white/40 mb-1">Velocity</span>
+             <span className="text-xs font-mono text-emerald-400">9c</span>
+           </div>
+           <div className="flex flex-col items-center">
+             <span className="text-[9px] font-black uppercase tracking-[0.4em] text-white/40 mb-1">Vector</span>
+             <span className="text-xs font-mono text-emerald-400">Theta</span>
+           </div>
+           <div className="flex flex-col items-center">
+             <span className="text-[9px] font-black uppercase tracking-[0.4em] text-white/40 mb-1">Depth</span>
+             <span className="text-xs font-mono text-emerald-400">Deep</span>
+           </div>
+        </div>
       </div>
     </div>
   );
@@ -2059,16 +2646,15 @@ const SacredMetricsTooltip = ({ active, payload, label, mode }: any) => {
   if (active && payload && payload.length) {
     const val = payload[0].value;
     return (
-      <div className="bg-[#0b0118]/95 backdrop-blur-xl border border-white/10 p-3 rounded-2xl shadow-2xl font-mono text-left max-w-[180px]">
-        <p className="text-[8px] font-black tracking-widest text-[#10b981] uppercase mb-1">
-          {label || 'METRICS WAVE'}
+      <div className="bg-black/90 backdrop-blur-3xl border border-white/20 p-4 sm:p-5 rounded-3xl shadow-2xl relative overflow-hidden flex flex-col gap-1">
+        <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
+        <p className="text-[9px] font-black uppercase tracking-[0.3em] text-white/40 italic relative z-10 leading-none">
+          {payload[0].payload.displayDate}
         </p>
-        <div className="flex items-baseline gap-1">
-          <span className="text-sm font-black text-white leading-none">
-            {mode === 'habits' ? `${val}%` : val >= 0 ? `+$${val.toLocaleString()}` : `-$${Math.abs(val).toLocaleString()}`}
-          </span>
-        </div>
-        <p className="text-[7px] text-white/40 mt-1 uppercase tracking-wider">
+        <p className="text-xl sm:text-2xl font-black text-white italic tracking-tighter leading-none relative z-10">
+          {mode === 'habits' ? `${val}%` : val >= 0 ? `+$${val.toLocaleString()}` : `-$${Math.abs(val).toLocaleString()}`}
+        </p>
+        <p className="text-[7px] sm:text-[8px] text-white/40 uppercase tracking-wider italic relative z-10 leading-none">
           {mode === 'habits' ? 'Rituals Complete' : 'Cumulative Flow'}
         </p>
       </div>
@@ -2176,18 +2762,19 @@ const SacredMetrics = ({ habits, logs, transactions, isMobile }: { habits: Habit
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className={`sm:col-span-1 lg:col-span-1 glass-card rounded-[2rem] sm:rounded-[2.5rem] p-5 sm:p-6 border-white/5 relative overflow-hidden flex flex-col min-h-[320px] sm:min-h-[340px] group transition-colors duration-500 ${mode === 'wealth' ? 'bg-emerald-950/20' : ''}`}
+      whileHover={{ y: -5 }}
+      className={`sm:col-span-1 lg:col-span-1 bg-black backdrop-blur-xl rounded-[2.5rem] p-5 sm:p-7 border border-white/10 relative overflow-hidden flex flex-col min-h-[300px] sm:min-h-[340px] group transition-all duration-500 shadow-2xl hover:border-white/30 after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none ${mode === 'wealth' ? 'from-emerald-500/10' : ''}`}
     >
       <div className={`absolute inset-0 bg-gradient-to-b ${mode === 'wealth' ? 'from-emerald-400/5' : 'from-emerald-500/5'} to-transparent pointer-events-none`} />
       
-      <div className="relative z-10 flex flex-col h-full">
+      <div className="relative z-10 flex flex-col flex-grow">
         {/* Header Controls with Smooth Gesture-Slabs */}
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between mb-6 sm:mb-8">
           {/* Mode Switch Gesture-Slab */}
-          <div className="relative flex items-center bg-white/5 p-1 rounded-full border border-white/5 w-full sm:w-auto">
+          <div className="relative flex items-center bg-white/5 p-1 rounded-full border border-white/5 w-full sm:w-auto overflow-hidden">
             <button 
               onClick={() => setMode('habits')}
-              className="relative z-10 flex-1 sm:flex-initial px-4 py-2 flex items-center justify-center gap-1.5 text-[9px] font-black uppercase tracking-widest transition-colors duration-300"
+              className="relative z-10 flex-1 sm:flex-initial px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-widest transition-colors duration-300"
               style={{ color: mode === 'habits' ? '#fff' : 'rgba(255,255,255,0.4)' }}
             >
               <Activity className="w-3 h-3" />
@@ -2195,7 +2782,7 @@ const SacredMetrics = ({ habits, logs, transactions, isMobile }: { habits: Habit
             </button>
             <button 
               onClick={() => setMode('wealth')}
-              className="relative z-10 flex-1 sm:flex-initial px-4 py-2 flex items-center justify-center gap-1.5 text-[9px] font-black uppercase tracking-widest transition-colors duration-300"
+              className="relative z-10 flex-1 sm:flex-initial px-3 sm:px-4 py-1.5 sm:py-2 flex items-center justify-center gap-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-widest transition-colors duration-300"
               style={{ color: mode === 'wealth' ? '#fff' : 'rgba(255,255,255,0.4)' }}
             >
               <TrendingUp className="w-3 h-3" />
@@ -2218,7 +2805,7 @@ const SacredMetrics = ({ habits, logs, transactions, isMobile }: { habits: Habit
               <button
                 key={t}
                 onClick={() => setTimeframe(t)}
-                className={`relative z-10 flex-1 sm:flex-initial px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest transition-colors duration-300 ${timeframe === t ? 'text-cosmic-black font-black' : 'text-stardust/40 hover:text-white'}`}
+                className={`relative z-10 flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 rounded-full text-[7px] sm:text-[8px] font-black uppercase tracking-widest transition-colors duration-300 ${timeframe === t ? 'text-cosmic-black font-black' : 'text-stardust/40 hover:text-white'}`}
               >
                 {t}
               </button>
@@ -2238,7 +2825,7 @@ const SacredMetrics = ({ habits, logs, transactions, isMobile }: { habits: Habit
         {/* Main Value Display */}
         <div className="mb-4">
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black italic text-white tracking-tighter leading-none">
+            <span className="text-2xl sm:text-3xl font-black italic text-white tracking-tighter leading-none">
               {mode === 'habits' ? `${metricsData[metricsData.length - 1]?.value}%` : `$${Math.abs(metricsData[metricsData.length - 1]?.value).toLocaleString()}`}
             </span>
             <span className={`${isPositive ? 'text-emerald-400' : 'text-red-400'} text-[8px] font-black uppercase tracking-widest`}>
@@ -2333,6 +2920,51 @@ const DashboardView = ({
   const totalExpense = transactions.filter(t => t.type === 'expense').reduce((acc, curr) => acc + curr.amount, 0);
   const netWealth = totalIncome - totalExpense;
 
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentSlide(prev => (prev + 1) % 3);
+    }, 8000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const isSubscribed = tier !== 'Novice';
+
+  const slides = useMemo(() => {
+    return [
+      {
+        tag: "OS VERSION",
+        title: "VIBE OS CORE UPDATE",
+        detail: isSubscribed 
+          ? "VIBE SYSTEM v2.5 PREMIUM: Sub-quantum frequency streams connected successfully. Galactic syncing at 432Hz."
+          : "VIBE SYSTEM v2.5 LITE: Standard frequency core active. Signal limits current bandwidth. Access premium tiers to expand.",
+        color: "text-emerald-400",
+        badge: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+      },
+      {
+        tag: "GRID TELEMETRY",
+        title: isSubscribed ? "CORE RECALIBRATED" : "POTENTIAL LOCKED",
+        detail: isSubscribed
+          ? "Quantum grid re-stabilized. Current manifestation density increased by 142%. Divine guidance channel online."
+          : "Grid operates at basic potential. High dimensional paths are waiting. Re-anchor your alignment in the field.",
+        color: "text-amber-400",
+        badge: "bg-amber-500/10 border-amber-500/30 text-amber-400"
+      },
+      {
+        tag: isSubscribed ? "DIVINE PROPHECY" : "MIND RESISTANCE",
+        title: isSubscribed ? "PERSISTENCE CONFIRMED" : "HEARING THE CALL",
+        detail: isSubscribed
+          ? (activeDesires.length > 0 
+              ? `Trust the galactic clock. Your sacred goal to "${activeDesires[0].text}" is currently crystallizing in the sub-quantum blueprint. Just a little more time, stay aligned, and this physical manifestation will be fully yours! The universe acknowledges your effort.`
+              : "Trust the galactic timeline. Your desires are currently materializing in the unseen field. Keep vibrating at high frequency — it is only a matter of time before physical shift completes!")
+          : "The universe responds to investment, not hesitation. Your subconscious is fully ready to manifest. By withholding support from your highest evolution, you tell the cosmos you support your own limits. Open the channel and claim your mastery today.",
+        color: isSubscribed ? "text-emerald-400" : "text-rose-400",
+        badge: isSubscribed ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-rose-500/10 border-rose-500/30 text-rose-400"
+      }
+    ];
+  }, [isSubscribed, activeDesires]);
+
   const sortedTransactions = [...transactions]
     .filter(t => t.timestamp)
     .sort((a, b) => {
@@ -2364,21 +2996,20 @@ const DashboardView = ({
   const displayVision = useMemo(() => isMobile ? sortedVisionItems.slice(-4) : sortedVisionItems, [sortedVisionItems, isMobile]);
 
   const getPosition = (index: number) => {
-    // Distribute images roughly in a 3x3 grid with overlaps
-    const cols = isMobile ? 2 : 4;
-    const row = Math.floor(index / cols);
-    const col = index % cols;
+    // Artistic scatter distribution
+    const radius = isMobile ? 120 : 180;
+    const angle = (index * 137.5) * (Math.PI / 180); // Golden angle for even distribution
+    const dist = Math.sqrt(index) * (isMobile ? 15 : 25);
     
-    // spacing relative to index to avoid perfect grid
-    const left = (col * (100 / cols)) + (Math.sin(index * 2) * 5);
-    const top = (row * 30) + (Math.cos(index * 3) * 5);
+    const x = Math.cos(angle) * dist;
+    const y = Math.sin(angle) * dist;
     
-    const scale = 1.1 - (index * 0.02); 
-    const rotation = (Math.sin(index * 789.123) * 15);
+    const scale = 1.0 - (index * 0.05); 
+    const rotation = (Math.sin(index * 42) * 12);
     
     return {
-      left: `${Math.max(5, Math.min(85, left))}%`,
-      top: `${Math.max(5, Math.min(80, top))}%`,
+      left: `calc(50% + ${x}px - ${isMobile ? '64px' : '96px'})`,
+      top: `calc(50% + ${y}px - ${isMobile ? '64px' : '96px'})`,
       scale,
       rotate: `${rotation}deg`,
       zIndex: 10 + index
@@ -2388,38 +3019,102 @@ const DashboardView = ({
   const currentFocus = activeDesires[focusIndex % activeDesires.length] || desires[0];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-6 lg:gap-8 auto-rows-min pb-24 lg:pb-12 max-w-[90rem] mx-auto px-4 lg:px-6 relative z-10">
-      {/* Interactive Resonance Monitor Header */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 auto-rows-min pb-24 lg:pb-12 max-w-[90rem] mx-auto px-4 lg:px-8 relative z-10">
+      {/* Cosmic Transit Monitor */}
       <motion.div 
         initial={{ opacity: 0, y: -15 }}
         animate={{ opacity: 1, y: 0 }}
         className="col-span-1 sm:col-span-2 lg:col-span-4"
       >
-        <SolfeggioVisualizer activeHz={activeHz} onToggle={onToggle} />
+        <div className="relative w-full h-[200px] sm:h-[300px] lg:h-[450px] rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl group bg-black">
+          <video 
+            autoPlay 
+            loop 
+            muted 
+            playsInline 
+            key="transit-bg-video-v3"
+            className="absolute inset-0 w-full h-full object-cover scale-110"
+          >
+            <source src="https://assets.mixkit.co/videos/preview/mixkit-flying-through-a-star-field-in-outer-space-4395-large.mp4" type="video/mp4" />
+            <source src="https://cdn.pixabay.com/video/2024/02/09/200021-912234589_large.mp4" type="video/mp4" />
+          </video>
+          
+          {/* Overlay Effects */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/20 pointer-events-none" />
+          <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors duration-700" />
+          
+          {/* Scanning Lines Effect */}
+          <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]" />
+
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 sm:p-12 z-10 max-w-4xl mx-auto">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentSlide}
+                initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -20, scale: 0.98 }}
+                transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] }}
+                className="flex flex-col items-center justify-center p-4"
+              >
+                <div className={`px-4 py-1.5 rounded-full backdrop-blur-xl border text-[8px] sm:text-[9px] font-black uppercase tracking-[0.4em] mb-4 sm:mb-6 italic flex items-center gap-2 shadow-2xl transition-colors duration-500 ${slides[currentSlide].badge}`}>
+                  <div className="w-1.5 h-1.5 rounded-full bg-current animate-ping" />
+                  {slides[currentSlide].tag}
+                </div>
+                
+                <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white italic tracking-tighter uppercase leading-none drop-shadow-[0_10px_30px_rgba(0,0,0,1)] select-none mb-4 sm:mb-6">
+                  {slides[currentSlide].title}
+                </h2>
+                
+                <p className="text-stardust/80 text-[10px] sm:text-xs lg:text-sm font-bold max-w-2xl leading-relaxed tracking-wider drop-shadow-md italic uppercase">
+                  {slides[currentSlide].detail}
+                </p>
+              </motion.div>
+            </AnimatePresence>
+
+            {/* Slide Indicators / Navigation */}
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 z-20">
+              {slides.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentSlide(idx)}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentSlide ? 'w-6 bg-emerald-400' : 'w-2 bg-white/20 hover:bg-white/40'}`}
+                  aria-label={`Go to slide ${idx + 1}`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Interactive Toggle for Audio (Optional Visual Only) */}
+          <button 
+             onClick={() => activeHz ? onToggle(activeHz) : onToggle(528)}
+             className="absolute bottom-8 right-8 sm:bottom-12 sm:right-12 p-4 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:bg-white hover:text-black transition-all duration-500 group/btn shadow-2xl z-20"
+          >
+            {activeHz ? <Activity className="w-5 h-5 animate-pulse" /> : <Infinity className="w-5 h-5" />}
+          </button>
+        </div>
       </motion.div>
 
       {/* 1. Alignment Core */}
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        whileHover={{ scale: 1.005 }}
+        whileHover={{ y: -5 }}
         onClick={() => setView('habits')}
-        className="sm:col-span-2 lg:col-span-2 bg-white/5 backdrop-blur-xl rounded-[2rem] p-8 sm:p-10 lg:p-12 border border-white/10 shadow-xl relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[360px] sm:min-h-[400px]"
+        className="sm:col-span-2 lg:col-span-2 bg-black backdrop-blur-xl rounded-[2.5rem] p-6 sm:p-10 lg:p-12 border border-emerald-500/10 shadow-2xl relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[360px] sm:min-h-[400px] transition-all hover:border-emerald-500/40 after:absolute after:inset-0 after:bg-gradient-to-tr after:from-emerald-500/5 after:to-transparent after:pointer-events-none"
       >
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 via-transparent to-transparent opacity-50" />
         <div className="relative z-10 flex flex-col h-full">
-          <div className="flex items-center justify-between mb-12">
-            <div className="px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[9px] font-black uppercase tracking-[0.4em] text-emerald-300 flex items-center gap-2">
+          <div className="flex items-center justify-between mb-8 sm:mb-12">
+            <div className="px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.4em] text-emerald-300 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
               Engine Stable
             </div>
             <Activity className="w-5 h-5 text-emerald-500/40 group-hover:text-emerald-400 transition-colors duration-500" />
           </div>
           
-          <h3 className="text-4xl lg:text-7xl font-black mb-6 tracking-tight text-white drop-shadow-2xl italic leading-[0.9] uppercase">
-            Universal <br /><span className="text-emerald-400">Order.</span>
+          <h3 className="text-2xl sm:text-5xl lg:text-7xl font-black mb-4 sm:mb-6 tracking-tight text-white drop-shadow-2xl italic leading-[0.9] uppercase">
+            Universal <br /><span className="text-emerald-400 font-black italic">Order.</span>
           </h3>
-          <p className="text-emerald-100/60 mb-12 max-w-sm text-xs font-bold leading-relaxed uppercase tracking-[0.2em] italic">
+          <p className="text-emerald-100/40 mb-8 sm:mb-12 max-w-sm text-[8px] sm:text-[10px] font-black leading-relaxed uppercase tracking-[0.25em] italic">
             Synchronizing internal frequency with the quantum field.
           </p>
 
@@ -2449,74 +3144,62 @@ const DashboardView = ({
       {/* 2. Sacred Metrics (Visual Habit Tracking) */}
       <SacredMetrics habits={habits} logs={habitLogs} transactions={transactions} isMobile={isMobile} />
 
-      {/* 3. Focus Area (Scripture Notebook Style) */}
+      {/* 3. Cosmic Explorer (Pure Video Section) */}
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.1 }}
-        whileHover={isMobile ? undefined : { y: -5, boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}
-        onClick={() => setFocusIndex(focusIndex + 1)}
-        className="sm:col-span-1 lg:col-span-1 rounded-[2rem] p-8 sm:p-10 pb-10 border border-white/10 bg-white/5 backdrop-blur-xl shadow-xl relative overflow-hidden group cursor-pointer flex flex-col justify-between min-h-[360px] sm:min-h-[400px] transform-gpu"
+        className="sm:col-span-1 lg:col-span-1 border border-white/10 bg-black backdrop-blur-xl rounded-[2.5rem] relative overflow-hidden group min-h-[340px] sm:min-h-[400px] shadow-2xl transition-all hover:border-white/30"
       >
-        <div className="absolute inset-0 bg-gradient-to-tr from-amber-900/5 to-transparent pointer-events-none" />
-        <div className="relative z-10 flex flex-col h-full pl-6 lg:pl-8">
-          <div className="flex items-center justify-between mb-10">
-            <div className="p-3 bg-amber-900/10 rounded-2xl flex items-center justify-center text-amber-700/50 group-hover:bg-amber-900 group-hover:text-amber-100 transition-all duration-500">
-              <Target className="w-6 h-6" />
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-900/30 italic">The Path</span>
+        <video 
+          autoPlay 
+          loop 
+          muted 
+          playsInline 
+          key="focus-bg-video-pure"
+          className="absolute inset-0 w-full h-full object-cover scale-110 group-hover:scale-100 transition-transform duration-[40s] ease-linear"
+        >
+          <source src="https://cdn.pixabay.com/video/2017/12/31/13554-249581057_large.mp4" type="video/mp4" />
+        </video>
+        
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent pointer-events-none" />
+        
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center z-10">
+          <div className="px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-xl border border-white/10 text-[8px] font-black uppercase tracking-[0.4em] text-white/40 mb-4 italic">
+            Observer Mode
           </div>
-
-          <div className="flex-grow flex flex-col justify-center">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={currentFocus?.id || 'empty'}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="mb-10"
-              >
-                <h4 className="text-4xl lg:text-5xl font-black text-amber-950 leading-[0.9] tracking-tighter italic mb-6 uppercase font-serif">
-                  {currentFocus?.text || 'Destiny Intent'}
-                </h4>
-                <div className="inline-block px-4 py-1.5 bg-amber-900/10 border border-amber-900/20 rounded-lg text-[9px] font-black uppercase tracking-widest text-amber-900/50 italic">
-                  {currentFocus?.category || 'Legacy'}
-                </div>
-              </motion.div>
-            </AnimatePresence>
-          </div>
-
-          <div className="relative z-10 pt-8 border-t border-amber-900/10 flex items-center justify-between mt-auto">
-             <span className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-900/40">Singularities: <span className="text-amber-950/70 ml-1">{activeDesires.length}</span></span>
-             <ChevronRight className="w-5 h-5 text-amber-900/30 group-hover:text-amber-900 transition-colors duration-500" />
-          </div>
+          <h4 className="text-xl font-black text-white italic uppercase tracking-tighter drop-shadow-2xl">
+            Stellar <br />Navigation
+          </h4>
         </div>
       </motion.div>
+
 
       {/* 4. Ritual Feed */}
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="md:col-span-1 lg:col-span-1 bg-white/5 backdrop-blur-xl rounded-[2.5rem] p-8 border border-white/5 shadow-2xl relative group overflow-hidden flex flex-col min-h-[380px]"
+        whileHover={{ y: -5 }}
+        className="md:col-span-1 lg:col-span-1 border border-white/10 bg-black backdrop-blur-xl rounded-[2.5rem] p-6 sm:p-8 pb-8 sm:pb-10 shadow-2xl relative overflow-hidden group flex flex-col min-h-[380px] transition-all hover:border-white/30 after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none"
       >
-        <h3 className="text-[9px] font-black uppercase tracking-[0.4em] text-stardust/30 mb-8 flex justify-between items-center group-hover:text-white transition-colors">
+        <h3 className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.4em] text-white/30 mb-8 sm:mb-10 flex justify-between items-center group-hover:text-white transition-colors relative z-10">
           Ritual Feed
-          <Activity className="w-3 h-3 text-emerald-400 animate-pulse" />
+          <Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
         </h3>
         
-        <div className="space-y-4 flex-grow">
+        <div className="space-y-3 sm:space-y-4 flex-grow relative z-10">
           {habits.slice(0, 4).map((habit, i) => (
             <motion.div 
               key={habit.id}
               initial={{ x: -10, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.4 + (i * 0.1) }}
-              className="flex items-center justify-between p-5 rounded-3xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-emerald-500/30 transition-all shadow-inner"
+              className="flex items-center justify-between p-3 sm:p-4 px-4 sm:px-5 rounded-[1.25rem] sm:rounded-[1.5rem] bg-white/[0.03] border border-white/5 hover:bg-white/[0.08] hover:border-emerald-500/30 transition-all shadow-inner group/item"
             >
               <div className="flex items-center gap-4 cursor-pointer" onClick={() => toggleHabit(habit.id)}>
-                <div className={`w-3 h-3 rounded-full transition-all duration-300 ${habit.completed ? 'bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.8)]' : 'bg-white/10'}`} />
-                <span className={`text-[11px] font-black uppercase tracking-widest transition-all ${habit.completed ? 'text-stardust/20 line-through' : 'text-white/90'}`}>
+                <div className={`w-2 h-2 rounded-full transition-all duration-300 ${habit.completed ? 'bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.9)]' : 'bg-white/10'}`} />
+                <span className={`text-[10px] font-black uppercase tracking-widest transition-all italic ${habit.completed ? 'text-white/20 line-through' : 'text-white/90'}`}>
                   {habit.name}
                 </span>
               </div>
@@ -2532,9 +3215,9 @@ const DashboardView = ({
                       origin: { y: 0.6 }
                     });
                   }}
-                  className="p-2 bg-emerald-500/20 hover:bg-emerald-500/40 rounded-full transition-all"
+                  className="p-2.5 bg-emerald-500/10 hover:bg-emerald-500/30 rounded-xl transition-all border border-emerald-500/20 group-hover/item:scale-110 active:scale-95"
                 >
-                  <Check className="w-4 h-4 text-emerald-400" />
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
                 </button>
               )}
             </motion.div>
@@ -2543,9 +3226,9 @@ const DashboardView = ({
         
         <button 
           onClick={() => setView('habits')}
-          className="w-full py-4 mt-4 rounded-2xl border border-dashed border-white/10 text-[8px] font-black uppercase tracking-[0.3em] text-stardust/20 hover:text-white transition-all hover:bg-white/5 italic"
+          className="relative z-10 w-full py-4 mt-6 rounded-[1.25rem] border border-dashed border-white/10 text-[9px] font-black uppercase tracking-[0.3em] text-white/30 hover:text-white transition-all hover:bg-white/5 italic"
         >
-          Full Spectrum
+          Access Infinite Spectrum
         </button>
       </motion.div>
 
@@ -2554,52 +3237,88 @@ const DashboardView = ({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
-        className="md:col-span-2 lg:col-span-3 bg-[#064e3b]/60 backdrop-blur-3xl rounded-[3rem] p-10 lg:p-12 border border-white/5 shadow-2xl relative overflow-hidden group min-h-[440px]"
+        className="md:col-span-2 lg:col-span-3 bg-black backdrop-blur-3xl rounded-[3rem] p-8 sm:p-10 lg:p-12 border border-white/5 shadow-2xl relative overflow-hidden group min-h-[450px] sm:min-h-[500px]"
       >
+        {/* Animated Background Atmosphere */}
         <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
+        <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-emerald-500/5 blur-[100px] rounded-full animate-pulse" />
+        <div className="absolute -right-20 -top-20 w-80 h-80 bg-blue-500/5 blur-[100px] rounded-full animate-pulse delay-700" />
         
         <div className="flex justify-between items-center mb-10 relative z-10">
           <div className="flex flex-col">
             <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-emerald-400/40 mb-1">Projection Core</h3>
             <h4 className="text-2xl font-black text-white italic tracking-tighter uppercase leading-none">Vision Deck.</h4>
           </div>
-          <button onClick={() => setView('vision')} className="px-6 py-2 rounded-full bg-white/5 border border-white/10 text-[9px] font-black uppercase tracking-widest text-stardust/60 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2">
-            Expand Deck <Expand className="w-3 h-3" />
+          <button onClick={() => setView('vision')} className="group/btn px-6 py-2.5 rounded-full bg-white/5 border border-white/10 text-[9px] font-black uppercase tracking-widest text-stardust/60 hover:text-white transition-all flex items-center gap-2 overflow-hidden relative">
+            <span className="relative z-10">Expand Deck</span>
+            <Expand className="w-3 h-3 relative z-10 group-hover/btn:rotate-12 transition-transform" />
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-1000" />
           </button>
         </div>
 
-        <div className="absolute inset-0 p-6 sm:p-12 pt-28">
-          {displayVision.map((item, idx) => {
-            const pos = getPosition(idx);
-            return (
-              <motion.div 
-                key={item.id} 
-                initial={{ opacity: 0, scale: 0.5, rotate: 0 }}
-                animate={{ 
-                  opacity: 1, 
-                  scale: pos.scale,
-                  left: pos.left,
-                  top: pos.top,
-                  rotate: pos.rotate,
-                  zIndex: pos.zIndex
-                }}
-                whileHover={isMobile ? undefined : { scale: 1.3, zIndex: 100, rotate: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }}
-                className="absolute w-32 h-32 md:w-48 md:h-48 group/vision cursor-pointer"
-              >
-                <div className="w-full h-full p-2.5 bg-white/10 backdrop-blur-3xl border border-white/20 rounded-[2rem] shadow-2xl relative overflow-hidden group-hover/vision:border-emerald-500/50 transition-all duration-500 shadow-black/60">
-                  <img 
-                    src={item.imageUrl} 
-                    alt={item.caption} 
-                    className="w-full h-full object-cover rounded-[1.5rem] grayscale-[0.4] brightness-75 group-hover/vision:grayscale-0 group-hover/vision:brightness-110 transition-all duration-700" 
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover/vision:opacity-100 transition-all duration-500 translate-y-4 group-hover/vision:translate-y-0">
-                    <p className="text-[9px] font-black text-white uppercase tracking-[0.2em] italic truncate">{item.caption}</p>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none perspective-[1000px]">
+          <div className="relative w-full h-full max-w-sm max-h-[400px]">
+            <AnimatePresence>
+              {displayVision.map((item, idx) => {
+                const pos = getPosition(idx);
+                return (
+                  <motion.div 
+                    key={item.id} 
+                    initial={{ opacity: 0, scale: 0, rotate: 0, y: 100 }}
+                    animate={{ 
+                      opacity: 1, 
+                      scale: pos.scale,
+                      left: pos.left,
+                      top: pos.top,
+                      rotate: pos.rotate,
+                      zIndex: pos.zIndex
+                    }}
+                    transition={{ 
+                      type: "spring",
+                      stiffness: 100,
+                      damping: 15,
+                      delay: 0.1 * idx
+                    }}
+                    whileHover={isMobile ? undefined : { 
+                      scale: 1.25, 
+                      zIndex: 200, 
+                      rotate: 0, 
+                      y: -20,
+                      transition: { type: "spring", stiffness: 400, damping: 20 } 
+                    }}
+                    className="absolute w-40 h-40 md:w-56 md:h-56 group/vision cursor-pointer pointer-events-auto"
+                    style={{ transformStyle: 'preserve-3d' }}
+                  >
+                    <div className="w-full h-full p-2 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] shadow-2xl relative overflow-hidden group-hover/vision:border-emerald-500/40 transition-all duration-700 shadow-black/80 ring-1 ring-white/5">
+                      <img 
+                        src={item.imageUrl} 
+                        alt={item.caption} 
+                        className="w-full h-full object-cover rounded-[2rem] grayscale-[0.2] brightness-90 group-hover/vision:grayscale-0 group-hover/vision:brightness-110 group-hover/vision:scale-110 transition-all duration-1000 ease-out" 
+                        referrerPolicy="no-referrer"
+                      />
+                      
+                      {/* Interaction Glow */}
+                      <div className="absolute inset-0 opacity-0 group-hover/vision:opacity-100 transition-opacity duration-700 bg-gradient-to-t from-emerald-500/20 via-transparent to-transparent pointer-events-none" />
+                      
+                      <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover/vision:opacity-100 transition-all duration-500 translate-y-4 group-hover/vision:translate-y-0">
+                        <p className="text-[10px] font-black text-white uppercase tracking-[0.2em] italic truncate text-center drop-shadow-md">{item.caption}</p>
+                      </div>
+                    </div>
+                    
+                    {/* Shadow underneath */}
+                    <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-3/4 h-2 bg-black/40 blur-xl rounded-full scale-0 group-hover/vision:scale-100 transition-transform duration-500 opacity-50" />
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+            
+            {displayVision.length === 0 && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-stardust/10">
+                <ImageIcon className="w-20 h-20 mb-4 animate-pulse" />
+                <p className="text-[10px] font-black uppercase tracking-[0.4em] italic">Waiting for Vision</p>
+              </div>
+            )}
+          </div>
         </div>
       </motion.div>
     </div>
@@ -2655,31 +3374,30 @@ const ManifestView = ({
         {desires.map(desire => (
           <motion.div 
             key={desire.id} 
-            whileHover={isMobile ? undefined : { scale: 1.005, x: 2 }}
+            whileHover={isMobile ? undefined : { y: -2 }}
             whileTap={{ scale: 0.995 }}
             onClick={() => toggleDesire(desire.id)}
-            className={`p-6 lg:p-10 rounded-sm transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group cursor-pointer shadow-[5px_5px_15px_rgba(0,0,0,0.2)] border-b-2 border-r-2 border-black/10 relative overflow-hidden transform-gpu ${desire.isAchieved ? 'opacity-50 grayscale bg-[#e4d4ac]' : 'bg-[#f4e4bc]'}`}
-            style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/cream-paper.png')` }}
+            className={`p-6 lg:p-10 rounded-[2.5rem] transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group cursor-pointer shadow-2xl border border-white/10 relative overflow-hidden transform-gpu backdrop-blur-xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none hover:border-white/30 ${desire.isAchieved ? 'opacity-50 grayscale bg-white/5' : 'bg-black/40'}`}
           >
             <div className="flex items-center gap-6 relative z-10">
-              <div className={`w-10 h-10 rounded-full border-2 shrink-0 flex items-center justify-center transition-all ${desire.isAchieved ? 'bg-black border-black shadow-inner' : 'border-black/10 group-hover:border-black'}`}>
-                {desire.isAchieved && <CheckSquare className="w-5 h-5 text-white" />}
+              <div className={`w-12 h-12 rounded-2xl border shrink-0 flex items-center justify-center transition-all ${desire.isAchieved ? 'bg-white text-black border-white shadow-xl' : 'bg-white/5 border-white/10 group-hover:border-white/40'}`}>
+                {desire.isAchieved && <CheckSquare className="w-5 h-5" />}
               </div>
               <div>
-                <p className={`text-2xl lg:text-3xl font-script font-bold transition-all leading-tight ${desire.isAchieved ? 'line-through text-black/30 decoration-black/40' : 'text-black'}`}>{desire.text}</p>
-                <div className="flex gap-4 text-[10px] font-black uppercase tracking-widest text-black/30 mt-2">
-                  <span className="text-black/50">{desire.category}</span>
-                  <span>Archived: {desire.date}</span>
+                <p className={`text-2xl lg:text-3xl font-black transition-all leading-tight italic uppercase tracking-tighter ${desire.isAchieved ? 'line-through text-white/30 decoration-white/40' : 'text-white'}`}>{desire.text}</p>
+                <div className="flex flex-wrap gap-4 text-[9px] font-black uppercase tracking-[0.2em] text-stardust/40 mt-3 italic">
+                  <span className="text-emerald-500/60 bg-emerald-500/5 px-2 py-0.5 rounded-md border border-emerald-500/10">{desire.category}</span>
+                  <span className="opacity-50">Locked: {desire.date}</span>
                 </div>
               </div>
             </div>
             <button 
               onClick={(e) => { e.stopPropagation(); removeDesire(desire.id); }}
-              className="sm:opacity-0 group-hover:opacity-100 p-3 bg-black/5 text-black/20 rounded-xl hover:bg-black hover:text-white transition-all relative z-10"
+              className="sm:opacity-0 group-hover:opacity-100 p-3 bg-white/5 text-white/20 rounded-xl hover:bg-red-500 hover:text-white transition-all relative z-10"
             >
               <X className="w-4 h-4" />
             </button>
-            <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
+            <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
           </motion.div>
         ))}
       </div>
@@ -2848,61 +3566,85 @@ const VisionBoardView = ({ items, addItem, removeItem }: { items: VisionItem[], 
         )}
       </AnimatePresence>
 
-      <div className="bg-[#5d4037] p-5 sm:p-8 lg:p-12 rounded-[2rem] sm:rounded-[2.5rem] lg:rounded-[3.5rem] shadow-[inset_0_4px_20px_rgba(0,0,0,0.5),0_10px_40px_rgba(0,0,0,0.3)] min-h-[60vh] relative overflow-hidden border-8 border-[#3e2723]"
-           style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/cork-board.png')` }}>
+      <div className="bg-cosmic-void/40 backdrop-blur-3xl p-5 sm:p-8 lg:p-12 rounded-[2rem] sm:rounded-[4rem] lg:rounded-[5rem] shadow-2xl min-h-[70vh] relative overflow-hidden border border-white/5 group/board">
+        {/* Animated Background Energy */}
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-500/10 blur-[120px] rounded-full -translate-y-1/2 translate-x-1/4 animate-pulse pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-blue-500/10 blur-[100px] rounded-full translate-y-1/3 -translate-x-1/4 animate-pulse delay-1000 pointer-events-none" />
         
-        {/* Board Shadow inner */}
-        <div className="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,0.4)] pointer-events-none" />
+        {/* Floating Particles Overlay */}
+        <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] pointer-events-none" />
 
-        <div className="columns-1 md:columns-2 lg:columns-3 gap-5 lg:gap-8 space-y-5 lg:space-y-8 relative z-10">
-          {items.map(item => (
-            <motion.div 
-              whileHover={{ y: -5, rotate: Math.random() * 2 - 1 }}
-              key={item.id} 
-              className="break-inside-avoid bg-[#e8c9a5] p-2.5 pb-8 sm:p-3 sm:pb-10 rounded-sm shadow-[5px_10px_20px_rgba(0,0,0,0.4)] relative group border-b-4 border-r-4 border-black/10 overflow-hidden"
-              style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/cardboard.png')` }}
-            >
-              {/* Red Push Pin */}
-              <div className="absolute top-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-red-600 rounded-full z-20 shadow-lg ring-1 ring-black/20">
-                <div className="absolute top-1 left-1 w-1.5 h-1.5 bg-white/50 rounded-full" />
-              </div>
-              
-              <div className="relative overflow-hidden aspect-square rounded-sm mb-4 sm:mb-6 mt-3 sm:mt-4">
-                <img src={item.imageUrl} alt={item.caption} className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-700" referrerPolicy="no-referrer" />
-                <div className="absolute inset-0 ring-1 ring-inset ring-black/10" />
-                
-                {/* Delete Button on Hover */}
-                <button 
-                  onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
-                  className="absolute top-2 right-2 p-2 bg-black/40 backdrop-blur-md rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              
-              <div className="px-1.5 text-center">
-                <h4 className="text-lg sm:text-xl font-bold text-black/80 font-serif leading-tight transform -rotate-1 italic underline decoration-black/5 decoration-2 underline-offset-4">{item.caption}</h4>
-              </div>
-  
-              {/* Grainy overlay */}
-              <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
-            </motion.div>
-          ))}
-          {/* Placeholder tiles */}
-          {[1,2].map(p => (
-            <div 
-              key={p} 
-              onClick={() => setIsAdding(true)}
-              className="break-inside-avoid h-56 sm:h-64 bg-[#c4a585]/40 border-2 border-dashed border-black/30 rounded-sm flex flex-col items-center justify-center text-black/30 gap-2 sm:gap-3 hover:border-black/50 hover:text-black/60 transition-all cursor-pointer group relative overflow-hidden"
-              style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/cardboard.png')` }}
-             >
-                <div className="p-3 sm:p-4 bg-black/5 rounded-full group-hover:scale-110 transition-transform">
-                  <ImageIcon className="w-5 h-5 sm:w-6 sm:h-6" />
+        <div className="columns-1 md:columns-2 lg:columns-3 xl:columns-4 gap-6 lg:gap-10 space-y-6 lg:space-y-10 relative z-10 p-0.5">
+          <AnimatePresence mode="popLayout">
+            {items.map((item, idx) => (
+              <motion.div 
+                layout
+                initial={{ opacity: 0, scale: 0.9, y: 30 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.8, filter: 'blur(10px)' }}
+                transition={{ 
+                  delay: idx * 0.1,
+                  type: "spring",
+                  stiffness: 100,
+                  damping: 20
+                }}
+                whileHover={{ y: -8, scale: 1.02 }}
+                key={item.id} 
+                className="break-inside-avoid bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2rem] p-3 shadow-2xl relative group overflow-hidden hover:border-white/20 transition-colors duration-500"
+              >
+                <div className="relative overflow-hidden aspect-[4/5] rounded-[1.5rem]">
+                  <img 
+                    src={item.imageUrl} 
+                    alt={item.caption} 
+                    className="w-full h-full object-cover grayscale-[0.3] group-hover:grayscale-0 scale-100 group-hover:scale-110 transition-all duration-1000 ease-out" 
+                    referrerPolicy="no-referrer" 
+                  />
+                  
+                  {/* Glassy Overlay Gradient */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60 group-hover:opacity-40 transition-opacity duration-500" />
+                  
+                  {/* Delete Button - Sleeker */}
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
+                    className="absolute top-4 right-4 p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/50 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500/80 hover:text-white hover:scale-110"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+
+                  {/* Caption Overlay */}
+                  <div className="absolute inset-x-0 bottom-0 p-6 translate-y-2 group-hover:translate-y-0 transition-transform duration-500">
+                    <div className="bg-white/10 backdrop-blur-md border border-white/10 px-4 py-3 rounded-[1.2rem] shadow-xl">
+                      <p className="text-[11px] lg:text-xs font-black text-white uppercase tracking-[0.15em] italic leading-tight text-center drop-shadow-sm">
+                        {item.caption}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest italic">Attach Potential</span>
-                <div className="absolute inset-0 opacity-5 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
-             </div>
-          ))}
+                
+                {/* Subtle Inner Glow on Hover */}
+                <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-700 bg-gradient-to-br from-emerald-500/5 to-blue-500/5" />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
+          {/* Placeholder/Add Tile - Sleeker */}
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            onClick={() => setIsAdding(true)}
+            className="break-inside-avoid min-h-[300px] bg-white/[0.03] border-2 border-dashed border-white/10 rounded-[2rem] flex flex-col items-center justify-center text-stardust/20 gap-4 hover:border-white/30 hover:bg-white/[0.05] hover:text-white/60 transition-all cursor-pointer group relative overflow-hidden"
+          >
+            <div className="p-5 bg-white/5 rounded-full group-hover:scale-125 group-hover:rotate-12 transition-all duration-500 border border-white/5">
+              <Plus className="w-8 h-8 opacity-40 group-hover:opacity-100" />
+            </div>
+            <div className="text-center">
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] block mb-1">Expand Vision</span>
+              <span className="text-[8px] font-medium opacity-40 uppercase tracking-widest">Import New Reality</span>
+            </div>
+            
+            {/* Hover energy pulse */}
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity bg-gradient-to-tr from-emerald-500 via-transparent to-blue-500" />
+          </motion.div>
         </div>
       </div>
     </div>
@@ -3257,35 +3999,36 @@ const WealthView = ({
           transactions.map(t => (
             <motion.div 
               key={t.id}
-              whileHover={{ x: 5, backgroundColor: 'rgba(255,255,255,0.08)' }}
-              className="p-6 rounded-[2rem] bg-white/5 border border-white/5 flex items-center justify-between group"
+              whileHover={{ x: 5, y: -2 }}
+              className="p-5 sm:p-6 rounded-[2rem] sm:rounded-[2.5rem] bg-black backdrop-blur-xl border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 group shadow-2xl transition-all hover:border-white/30 after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none relative overflow-hidden"
             >
-              <div className="flex items-center gap-6">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${t.type === 'income' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                  {t.type === 'income' ? <ArrowRight className="w-5 h-5 -rotate-45" /> : <ArrowRight className="w-5 h-5 rotate-45" />}
+              <div className="flex items-center gap-4 sm:gap-6 relative z-10 w-full sm:w-auto">
+                <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${t.type === 'income' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                  {t.type === 'income' ? <ArrowRight className="w-5 h-5 sm:w-6 sm:h-6 -rotate-45" /> : <ArrowRight className="w-5 h-5 sm:w-6 sm:h-6 rotate-45" />}
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-white mb-1">{t.label}</p>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-stardust/20">{t.category}</span>
-                    <div className="w-1 h-1 rounded-full bg-white/10" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-stardust/20">
+                <div className="min-w-0">
+                  <p className="text-base sm:text-lg font-black text-white italic uppercase tracking-tighter leading-tight mb-1 sm:mb-2 truncate">{t.label}</p>
+                  <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                    <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest text-white/30 italic whitespace-nowrap">{t.category}</span>
+                    <div className="w-1 h-1 rounded-full bg-white/10 hidden sm:block" />
+                    <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest text-white/20 italic whitespace-nowrap">
                       {new Date(t.timestamp?.toDate ? t.timestamp.toDate() : t.timestamp).toLocaleDateString()}
                     </span>
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-6">
-                <p className={`text-lg font-black italic ${t.type === 'income' ? 'text-emerald-400' : 'text-white/60'}`}>
+              <div className="flex items-center justify-between sm:justify-end gap-6 sm:gap-8 relative z-10 w-full sm:w-auto border-t sm:border-0 border-white/5 pt-4 sm:pt-0">
+                <p className={`text-xl sm:text-2xl font-black italic uppercase tracking-tighter ${t.type === 'income' ? 'text-emerald-400' : 'text-white/40'}`}>
                   {t.type === 'income' ? '+' : '-'}${t.amount.toLocaleString()}
                 </p>
                 <button 
                   onClick={() => removeTransaction(t.id)}
-                  className="opacity-0 group-hover:opacity-100 p-2 text-stardust/20 hover:text-red-400 transition-all"
+                  className="p-2 sm:p-3 bg-white/5 text-white/20 rounded-xl hover:bg-red-500 hover:text-white transition-all scale-100 sm:scale-0 sm:group-hover:scale-100 shadow-xl"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </button>
               </div>
+              <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
             </motion.div>
           ))
         )}
@@ -3357,8 +4100,8 @@ const HabitsView = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-2 lg:px-0">
-      <div className="relative flex p-1 bg-white/5 rounded-3xl border border-white/5 mb-12 max-w-[380px] overflow-hidden">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-0">
+      <div className="relative flex p-1 bg-white/5 rounded-3xl border border-white/5 mb-8 lg:mb-12 w-full sm:max-w-[380px] overflow-hidden">
         <button 
           onClick={() => { setTab('rituals'); setSelectedHabitId(null); }}
           className={`relative z-10 flex-1 py-3.5 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-colors duration-300 ${tab === 'rituals' ? 'text-cosmic-black font-semibold' : 'text-stardust/40 hover:text-white'}`}
@@ -3399,10 +4142,10 @@ const HabitsView = ({
             </motion.div>
           ) : (
             <>
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-12">
-                <div>
-                  <h3 className="text-3xl font-black tracking-tight mb-2 text-white">Daily Habits</h3>
-                  <p className="text-stardust/40 font-medium">Small actions lead to massive shifts. Consistently perform these to align your vibration.</p>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-8 lg:mb-12">
+                <div className="max-w-xl">
+                  <h3 className="text-3xl sm:text-4xl font-black tracking-tight mb-2 text-white italic uppercase">Daily Rituals</h3>
+                  <p className="text-stardust/40 text-xs sm:text-sm font-black uppercase tracking-wider italic">Small actions lead to massive shifts. Consistently perform these to align your vibration.</p>
                 </div>
                 <button 
                   onClick={handleAddRitual}
@@ -3507,56 +4250,41 @@ const HabitsView = ({
                   <div key={habit.id}>
                     <motion.div 
                       key={habit.id}
-                      whileHover={{ scale: 1.005 }}
+                      whileHover={{ y: -2 }}
                       whileTap={{ scale: 0.995 }}
-                    className={`group p-5 lg:p-6 rounded-3xl border transition-all cursor-pointer flex items-center justify-between ${habit.completed ? 'bg-white/5 border-transparent opacity-40' : 'bg-gradient-to-br from-white/10 to-white/5 border-white/10 hover:border-white/20 shadow-lg'}`}
-                  >
-                    <div className="flex items-center gap-4 lg:gap-5 flex-grow" onClick={() => setSelectedHabitId(habit.id)}>
-                      <div 
-                        onClick={(e) => { e.stopPropagation(); toggleHabit(habit.id, e as any); }}
-                        className={`w-12 h-12 lg:w-14 lg:h-14 rounded-2xl flex items-center justify-center transition-all ${habit.completed ? 'bg-white/5 text-stardust/20' : 'bg-white/10 text-white shadow-inner'}`}
-                      >
-                        <Zap className="w-5 h-5 lg:w-6 lg:h-6" />
-                      </div>
-                      <div className="flex-grow">
-                        <h4 className={`text-base lg:text-lg font-bold transition-colors ${habit.completed ? 'line-through text-stardust/40' : 'text-white'}`}>{habit.name}</h4>
-                        <div className="flex items-center gap-3 mt-1.5">
-                          <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider flex items-center gap-1.5 bg-white/5 px-2 py-1 rounded-md">
-                            <Flame className="w-3 h-3 text-emerald-400" /> {habit.streak} Streak
-                          </p>
-                          {habit.reminderTime ? (
-                            <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider flex items-center gap-1.5 bg-white/5 px-2 py-1 rounded-md">
-                              <Bell className="w-3 h-3 text-indigo-400" /> {habit.reminderTime}
+                      className={`group p-6 lg:p-8 rounded-[2.5rem] border border-white/10 transition-all cursor-pointer flex items-center justify-between shadow-2xl relative overflow-hidden backdrop-blur-xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none hover:border-white/30 ${habit.completed ? 'opacity-40 grayscale bg-white/5' : 'bg-black/40'}`}
+                    >
+                      <div className="flex items-center gap-6 flex-grow relative z-10" onClick={() => setSelectedHabitId(habit.id)}>
+                        <div 
+                          onClick={(e) => { e.stopPropagation(); toggleHabit(habit.id, e as any); }}
+                          className={`w-14 h-14 lg:w-16 lg:h-16 rounded-[1.5rem] flex items-center justify-center transition-all ${habit.completed ? 'bg-white/5 text-stardust/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-xl'}`}
+                        >
+                          <Zap className={`w-6 h-6 lg:w-7 lg:h-7 ${habit.completed ? '' : 'animate-pulse'}`} />
+                        </div>
+                        <div className="flex-grow">
+                          <h4 className={`text-xl lg:text-2xl font-black transition-colors italic uppercase tracking-tighter ${habit.completed ? 'line-through text-stardust/40' : 'text-white'}`}>{habit.name}</h4>
+                          <div className="flex flex-wrap items-center gap-3 mt-2.5">
+                            <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-1.5 bg-emerald-500/5 px-2.5 py-1 rounded-md border border-emerald-500/10">
+                              <Flame className="w-3.5 h-3.5" /> {habit.streak} Streak
                             </p>
-                          ) : (
-                            <p className="text-[10px] font-bold text-stardust/30 uppercase tracking-wider px-2 py-1">Active</p>
-                          )}
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); openEdit(habit); }}
-                            className="text-[10px] font-bold text-stardust/40 uppercase tracking-wider hover:text-white transition-colors"
-                          >
-                            Edit
-                          </button>
+                            {habit.reminderTime ? (
+                              <p className="text-[10px] font-black text-white/50 uppercase tracking-widest flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-md border border-white/10">
+                                <Clock className="w-3.5 h-3.5" /> {habit.reminderTime}
+                              </p>
+                            ) : (
+                              <p className="text-[10px] font-black text-stardust/30 uppercase tracking-widest px-2 py-1">Continuous Flow</p>
+                            )}
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); openEdit(habit); }}
+                              className="text-[10px] font-black text-stardust/40 uppercase tracking-widest hover:text-white transition-colors bg-white/5 px-3 py-1 rounded-md border border-white/5"
+                            >
+                              Edit Protocol
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div 
-                      onClick={(e) => toggleHabit(habit.id, e as any)}
-                      className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${habit.completed ? 'bg-emerald-500 border-emerald-500 shadow-lg shadow-emerald-500/20' : 'border-white/10 hover:border-white/30'}`}
-                    >
-                      <AnimatePresence initial={false}>
-                        {habit.completed && (
-                          <motion.div
-                            initial={{ scale: 0.5, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.5, opacity: 0 }}
-                          >
-                            <CheckSquare className="w-5 h-5 text-cosmic-black" />
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </motion.div>
+                      <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
+                    </motion.div>
                   </div>
                 ))}
               </div>
@@ -3611,14 +4339,14 @@ const HabitHistory = ({ habit, logs }: { habit: Habit, logs: HabitLog[] }) => {
           <p className="text-white/60 text-sm">Historical Frequency Records</p>
         </div>
         
-        <div className="flex gap-3">
-          <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-3 text-center min-w-[100px]">
-             <p className="text-[9px] font-bold uppercase tracking-widest text-white/60 mb-1">Total Rituals</p>
-             <p className="text-xl font-black text-white">{logs.length}</p>
+      <div className="flex gap-4">
+          <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl px-6 py-4 text-center min-w-[120px] shadow-xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none relative overflow-hidden">
+             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 mb-2 italic">Total Rituals</p>
+             <p className="text-2xl font-black text-white italic">{logs.length}</p>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-3 text-center min-w-[100px]">
-             <p className="text-[9px] font-bold uppercase tracking-widest text-white/60 mb-1">Avg Intensity</p>
-             <p className="text-xl font-black text-emerald-400">
+          <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl px-6 py-4 text-center min-w-[120px] shadow-xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none relative overflow-hidden">
+             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 mb-2 italic">Avg Intensity</p>
+             <p className="text-2xl font-black text-emerald-400 italic">
                {logs.length > 0 ? (logs.reduce((acc, curr) => acc + (curr.intensity || 0), 0) / logs.length).toFixed(1) : '0'}
              </p>
           </div>
@@ -3630,39 +4358,41 @@ const HabitHistory = ({ habit, logs }: { habit: Habit, logs: HabitLog[] }) => {
         <StreakCalendar habitId={habit.id} logs={logs} />
       </div>
 
-      {logs.length > 1 && (
-        <div className="h-64 w-full bg-[#050505] rounded-3xl p-6 border border-white/10 font-sans">
-          <h4 className="text-[#34d399] font-mono font-bold uppercase text-[10px] tracking-widest mb-6">Intensity Trend</h4>
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="intensityGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#34d399" stopOpacity={0.35}/>
-                  <stop offset="95%" stopColor="#34d399" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" vertical={false} />
-              <XAxis 
-                dataKey="date" 
-                axisLine={false} 
-                tickLine={false} 
-                stroke="transparent" 
-                tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 8, fontFamily: 'JetBrains Mono, monospace' }} 
-              />
-              <YAxis 
-                axisLine={false} 
-                tickLine={false} 
-                stroke="transparent" 
-                domain={[0, 10]} 
-                tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 8, fontFamily: 'JetBrains Mono, monospace' }} 
-              />
-              <Tooltip 
-                content={<IntensityTooltip />} 
-                cursor={{ stroke: 'rgba(52,211,153,0.15)', strokeWidth: 2 }}
-              />
-              <Area type="monotone" dataKey="intensity" stroke="#34d399" fillOpacity={1} fill="url(#intensityGrad)" strokeWidth={3} />
-            </AreaChart>
-          </ResponsiveContainer>
+        {logs.length > 1 && (
+        <div className="h-72 w-full bg-black/40 backdrop-blur-xl rounded-[2.5rem] p-8 border border-white/10 relative overflow-hidden shadow-2xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-emerald-500/5 after:to-transparent after:pointer-events-none">
+          <h4 className="text-emerald-400 font-black uppercase text-[10px] tracking-[0.4em] mb-8 italic">Frequency Intensity Trend</h4>
+          <div className="h-[calc(100%-3rem)] w-full relative z-10">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="intensityGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" vertical={false} />
+                <XAxis 
+                  dataKey="date" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  stroke="transparent" 
+                  tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 9, fontWeight: 900 }} 
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  stroke="transparent" 
+                  domain={[0, 10]} 
+                  tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 9, fontWeight: 900 }} 
+                />
+                <Tooltip 
+                  content={<IntensityTooltip />} 
+                  cursor={{ stroke: 'rgba(16,185,129,0.1)', strokeWidth: 2 }}
+                />
+                <Area type="monotone" dataKey="intensity" stroke="#10b981" fillOpacity={1} fill="url(#intensityGrad)" strokeWidth={4} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       )}
 
@@ -3749,40 +4479,51 @@ const SacredJournaling = ({ entries, onSave }: { entries: DiaryEntry[], onSave: 
 
       {!showHistory ? (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {methods.map(m => (
               <motion.button
                 key={m.id}
-                whileHover={{ scale: 1.02, y: -2 }}
+                whileHover={{ y: -5 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setMethod(m.id as any)}
-                className={`p-6 rounded-3xl border-2 text-left transition-all relative overflow-hidden group ${method === m.id ? 'bg-white border-white shadow-xl shadow-white/10' : 'bg-white/5 border-white/5 hover:border-white/20'}`}
+                className={`p-8 rounded-[2.5rem] border text-left transition-all relative overflow-hidden group shadow-xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none ${method === m.id ? 'bg-white border-white' : 'bg-black border-white/10 hover:border-white/30'}`}
               >
-                <h4 className={`text-[10px] font-black uppercase tracking-widest mb-2 ${method === m.id ? 'text-cosmic-black' : 'text-stardust/40'}`}>{m.label}</h4>
-                <p className={`text-xs font-bold leading-relaxed ${method === m.id ? 'text-cosmic-black/60' : 'text-stardust/20'}`}>{m.description}</p>
-                {method === m.id && <Sparkles className="absolute -right-2 -top-2 w-12 h-12 text-cosmic-black/5" />}
+                <h4 className={`text-[10px] font-black uppercase tracking-[0.3em] mb-3 italic ${method === m.id ? 'text-black' : 'text-white/30'}`}>{m.label}</h4>
+                <p className={`text-xs font-black leading-relaxed italic uppercase tracking-tight ${method === m.id ? 'text-black/40' : 'text-white/20'}`}>{m.description}</p>
+                {method === m.id && <Sparkles className="absolute -right-2 -top-2 w-12 h-12 text-black/5" />}
               </motion.button>
             ))}
           </div>
 
-          <form onSubmit={handleSubmit} className="relative">
+          <form onSubmit={handleSubmit} className="relative group/notebook">
+            {/* Notebook Margin Line */}
+            <div className="absolute left-[3.5rem] sm:left-[4.5rem] lg:left-[5.5rem] top-0 bottom-0 w-[2px] bg-red-400/20 z-10 pointer-events-none" />
+            <div className="absolute left-[3.6rem] sm:left-[4.6rem] lg:left-[5.6rem] top-0 bottom-0 w-[1px] bg-red-400/10 z-10 pointer-events-none" />
+            
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder={method === '369' ? 'I am so grateful for ... (3, 6, 9 times)' : 'Dear Universe, I am living my best life...'}
-              className="w-full h-[350px] sm:h-[450px] bg-[#fdfaf5] text-[#2c1810] p-10 sm:p-14 lg:p-20 rounded-[2.5rem] sm:rounded-[3.5rem] border-[12px] border-[#3e2723]/10 shadow-[0_30px_100px_rgba(0,0,0,0.3)] font-script text-2xl lg:text-3xl leading-relaxed focus:outline-none resize-none placeholder:text-[#2c1810]/20"
-              style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/creampaper.png')` }}
+              placeholder={method === '369' ? 'I am so grateful for ...' : 'Dear Universe, I am living my best life...'}
+              className="w-full h-[400px] sm:h-[550px] scripture-paper text-slate-900/90 p-8 pt-12 sm:p-14 sm:pt-18 lg:p-20 lg:pt-24 pl-16 sm:pl-28 lg:pl-36 rounded-[2.5rem] sm:rounded-[4rem] border shadow-2xl font-handwriting text-2xl sm:text-3xl lg:text-5xl leading-[2.85rem] focus:outline-none resize-none placeholder:text-black/5 backdrop-blur-sm transition-all border-black/10 focus:border-black/20 notebook-ruled selection:bg-blue-100"
             />
             
-            <div className="absolute bottom-10 right-10 lg:bottom-16 lg:right-16 flex items-center gap-6">
-              <span className="text-[10px] font-black uppercase tracking-widest text-[#2c1810]/40 font-sans italic">{content.length} vibration units</span>
+            <div className="absolute bottom-10 right-10 lg:bottom-16 lg:right-16 flex items-center gap-10">
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-black/20 italic">{content.length} vibration units</span>
               <button 
                 type="submit"
                 disabled={!content.trim()}
-                className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center transition-all shadow-2xl ${!content.trim() ? 'bg-black/5 text-black/20 cursor-not-allowed' : 'bg-[#2c1810] text-[#fdfaf5] hover:scale-110 active:scale-95'}`}
+                className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center transition-all shadow-2xl border ${!content.trim() ? 'bg-black/5 text-black/10 border-black/5 cursor-not-allowed' : 'bg-slate-900 text-white border-black hover:scale-110 active:scale-95 shadow-black/30'}`}
               >
-                <Plus className="w-8 h-8" />
+                <Plus className="w-10 h-10" />
               </button>
+            </div>
+            <div className="absolute inset-0 opacity-[0.08] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] p-10" />
+            
+            {/* Binding Holes Detail */}
+            <div className="absolute left-6 top-1/4 flex flex-col gap-12 opacity-10">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="w-4 h-4 rounded-full bg-black shadow-inner" />
+              ))}
             </div>
           </form>
         </motion.div>
@@ -3799,23 +4540,30 @@ const SacredJournaling = ({ entries, onSave }: { entries: DiaryEntry[], onSave: 
                 key={entry.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                whileHover={{ y: -5, scale: 1.01 }}
+                whileHover={{ y: -5 }}
                 transition={{ delay: i * 0.1 }}
-                className="p-10 rounded-[2.5rem] bg-[#fdfaf5] text-[#2c1810] border-2 border-transparent hover:border-[#3e2723]/20 transition-all relative group overflow-hidden"
-                style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/creampaper.png')` }}
+                className="p-10 rounded-[3rem] scripture-paper border border-black/10 hover:border-black/20 transition-all relative group overflow-hidden shadow-2xl flex flex-col justify-between min-h-[300px]"
               >
-                <div className="flex justify-between items-start mb-8 font-sans">
-                  <div className="flex items-center gap-3">
-                    <div className="px-3 py-1 bg-[#2c1810]/5 rounded-lg border border-[#2c1810]/5">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-[#2c1810]/60">{entry.method}</span>
-                    </div>
+                <div className="relative z-10">
+                  <div className="flex justify-between items-start mb-8">
+                    <span className="text-[10px] font-black uppercase tracking-[0.4em] text-black/30 italic">{entry.method} Protocol</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.4em] text-black/20 italic">{new Date(entry.timestamp?.toDate ? entry.timestamp.toDate() : entry.timestamp).toLocaleDateString()}</span>
                   </div>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-[#2c1810]/20 italic">{new Date(entry.timestamp?.toDate ? entry.timestamp.toDate() : entry.timestamp).toLocaleDateString()}</span>
+                  <div className="notebook-ruled rounded-2xl p-6 bg-black/[0.02] border border-black/5 hover:bg-black/[0.04] transition-all">
+                    <p className="text-2xl lg:text-4xl font-handwriting text-black/80 leading-[2.85rem] line-clamp-6 italic transition-opacity whitespace-pre-wrap">
+                      {entry.content}
+                    </p>
+                  </div>
                 </div>
-                <p className="font-script text-xl leading-relaxed line-clamp-6 opacity-80 group-hover:opacity-100 transition-opacity whitespace-pre-wrap italic">
-                  {entry.content}
-                </p>
-                <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-[#2c1810]/5 blur-3xl rounded-full" />
+                <div className="mt-8 pt-8 border-t border-black/5 flex justify-between items-center relative z-10">
+                  <div className="flex gap-1.5 opacity-30">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="w-1.5 h-1.5 rounded-full bg-black" />
+                    ))}
+                  </div>
+                  <Sparkles className="w-4 h-4 text-black/10 group-hover:text-emerald-600/40 transition-colors" />
+                </div>
+                <div className="absolute inset-0 opacity-[0.1] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
               </motion.div>
             ))
           )}
@@ -3942,70 +4690,67 @@ const AcademyView = ({ tier }: { tier: string }) => {
         <motion.div
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-[#fdfcf5] text-black shadow-[20px_20px_60px_rgba(0,0,0,0.5)] rounded-sm min-h-[80vh] relative flex flex-col lg:flex-row overflow-hidden border-l-[30px] border-black/90"
+          className="bg-black/60 text-white shadow-2xl rounded-[3rem] min-h-[85vh] relative flex flex-col lg:flex-row overflow-hidden border border-white/10 backdrop-blur-3xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-emerald-500/10 after:to-transparent after:pointer-events-none"
         >
-          {/* Book Spine Shadow */}
-          <div className="absolute top-0 left-0 bottom-0 w-4 bg-gradient-to-r from-black/20 to-transparent pointer-events-none z-10" />
-          
-          {/* Left Column - Paper Detail */}
-          <div className="lg:w-1/2 p-8 lg:p-16 relative border-r border-black/5 bg-[url('https://www.transparenttextures.com/patterns/cream-paper.png')]">
-            <h3 className="font-serif text-4xl lg:text-6xl font-black mb-8 leading-tight italic decoration-black/10 underline underline-offset-8">{selectedLesson.title}</h3>
-            
-            <div className="space-y-8 font-serif leading-relaxed text-lg lg:text-xl">
-              <section>
-                <h4 className="text-xs font-black uppercase tracking-[0.3em] text-black/40 mb-6 flex items-center gap-2">
-                  <BookOpen className="w-4 h-4" /> The Manuscript
-                </h4>
-                <p className="font-medium first-letter:text-6xl first-letter:font-black first-letter:mr-3 first-letter:float-left">
-                  {selectedLesson.description}
-                </p>
-              </section>
+          {/* Left Column - Divine Theory */}
+          <div className="lg:w-1/2 p-10 lg:p-20 relative border-r border-white/5 flex flex-col justify-center">
+            <div className="relative z-10">
+              <div className="mb-10 w-16 h-1 bg-white/20 rounded-full" />
+              <h3 className="text-5xl lg:text-7xl font-black mb-10 leading-[0.85] tracking-tight italic uppercase drop-shadow-2xl">{selectedLesson.title}</h3>
+              
+              <div className="space-y-10 leading-relaxed max-w-lg">
+                <section>
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30 mb-6 flex items-center gap-3 italic">
+                    <BookOpen className="w-4 h-4 text-emerald-400" /> The Manuscript
+                  </h4>
+                  <p className="text-lg lg:text-2xl font-black italic opacity-60 leading-tight uppercase tracking-tighter">
+                    {selectedLesson.description}
+                  </p>
+                </section>
 
-              <section className="pt-10 border-t border-black/5">
-                <h4 className="text-xs font-black uppercase tracking-[0.3em] text-black/40 mb-8">Quantum Foundations</h4>
-                <p className="italic text-black/60 bg-black/5 p-6 rounded-sm border-l-4 border-black/20">
-                  {selectedLesson.science}
-                </p>
-              </section>
+                <section>
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30 mb-6 italic">Quantum Mechanics</h4>
+                  <div className="bg-white/5 p-8 rounded-[2rem] border border-white/10 shadow-inner group-hover:border-white/20 transition-all">
+                    <p className="text-sm font-black italic text-emerald-400 uppercase tracking-tight leading-relaxed">
+                      {selectedLesson.science}
+                    </p>
+                  </div>
+                </section>
+              </div>
             </div>
             
-            {/* Page Numbering */}
-            <div className="absolute bottom-8 left-16 font-serif italic text-black/20 text-sm">Folio No. 00{selectedLesson.id}</div>
+            <div className="absolute bottom-12 left-20 text-[9px] font-black italic text-white/10 uppercase tracking-[0.5em]">Protocol Folio 00{selectedLesson.id}</div>
           </div>
 
-          {/* Right Column - Practical Work */}
-          <div className="lg:w-1/2 p-8 lg:p-16 bg-[#faf9f0] bg-[url('https://www.transparenttextures.com/patterns/paper-fibers.png')] relative">
-             <section className="h-full flex flex-col">
-                <h4 className="text-xs font-black uppercase tracking-[0.3em] text-black/40 mb-10 flex items-center gap-2">
-                  <CheckSquare className="w-4 h-4" /> Lab Protocols
+          {/* Right Column - Engineering Protocol */}
+          <div className="lg:w-1/2 p-10 lg:p-20 bg-black/40 relative flex flex-col justify-center">
+             <section className="relative z-10 flex flex-col h-full justify-center">
+                <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30 mb-12 flex items-center gap-3 italic">
+                  <CheckSquare className="w-4 h-4 text-emerald-400" /> Lab Protocols
                 </h4>
                 
-                <div className="space-y-12 flex-grow">
+                <div className="space-y-10 flex-grow py-4">
                   {selectedLesson.fullStep?.map((step, i) => (
-                    <div key={i} className="flex gap-6 group">
-                      <div className="font-serif text-3xl font-black text-black/10 transition-colors group-hover:text-black italic">0{i+1}</div>
-                      <p className="font-serif font-bold text-lg lg:text-xl leading-relaxed text-black/80">{step}</p>
+                    <div key={i} className="flex gap-8 group">
+                      <div className="text-5xl font-black text-white/5 transition-all group-hover:text-emerald-500/20 italic leading-none">0{i+1}</div>
+                      <p className="text-lg lg:text-xl font-black text-white leading-tight italic uppercase tracking-tighter self-center">{step}</p>
                     </div>
                   ))}
                 </div>
 
-                <div className="mt-16 bg-black text-white p-8 rounded-sm shadow-xl relative overflow-hidden group">
+                <div className="mt-16 bg-white text-black p-10 rounded-[2.5rem] shadow-2xl relative overflow-hidden group hover:scale-[1.02] transition-all">
                   <div className="relative z-10">
-                    <h5 className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-4 flex items-center gap-2">
-                      <Zap className="w-3 h-3 fill-white" /> The Fulcrum
+                    <h5 className="text-[9px] font-black uppercase tracking-[0.3em] text-black/30 mb-4 flex items-center gap-2 italic">
+                      <Zap className="w-3.5 h-3.5 fill-black" /> Manifestation Fulcrum
                     </h5>
-                    <p className="font-serif text-xl italic font-black">"{selectedLesson.trick}"</p>
+                    <p className="text-2xl font-black italic uppercase italic leading-none">"{selectedLesson.trick}"</p>
                   </div>
-                  <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                 </div>
              </section>
              
-             {/* Page Numbering */}
-             <div className="absolute bottom-8 right-16 font-serif italic text-black/20 text-sm">Archived Material</div>
+             <div className="absolute bottom-12 right-20 text-[9px] font-black italic text-white/10 uppercase tracking-[0.5em]">Continuum Archive</div>
           </div>
-
-          {/* Paper Texture Overlay */}
-          <div className="absolute inset-0 pointer-events-none opacity-[0.03] mix-blend-multiply bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
+          <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
         </motion.div>
       </div>
     );
@@ -4014,47 +4759,55 @@ const AcademyView = ({ tier }: { tier: string }) => {
   return (
     <div className="max-w-6xl mx-auto px-4 lg:px-0 pb-20">
        <div className="mb-16 lg:mb-24 text-center max-w-3xl mx-auto">
-          <h3 className="font-serif text-5xl lg:text-7xl font-black tracking-tight mb-6 text-white italic">The Archive</h3>
-          <div className="h-0.5 w-24 bg-white/20 mx-auto mb-8" />
-          <p className="text-stardust/40 text-lg lg:text-xl font-medium leading-relaxed font-serif">A sanctuary for universal truths. Every volume contains the blueprints to rewrite the fabric of your perceived existence.</p>
+          <h3 className="text-5xl lg:text-7xl font-black tracking-tight mb-6 text-white italic transition-all hover:tracking-widest uppercase leading-none">The Archive</h3>
+          <div className="h-1 w-24 bg-emerald-500/40 mx-auto mb-8 rounded-full" />
+          <p className="text-stardust/40 text-lg lg:text-xl font-black leading-relaxed italic uppercase tracking-widest">A sanctuary for universal truths. Every volume contains the blueprints to rewrite reality.</p>
        </div>
 
-       {/* Library Shelves Style - Dynamic Grid */}
-       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-20 lg:gap-x-16 relative">
-          {lessons.map((lesson, idx) => (
-            <motion.div 
-              key={lesson.id} 
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: idx * 0.1 }}
-              whileHover={{ scale: 1.02, y: -5 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setSelectedLesson(lesson)}
-              className="group cursor-pointer flex gap-8 items-start relative"
-            >
-              {/* Shelf Divider for every 2nd item (on md+ screens) or every item (on mobile) */}
-              <div className="absolute -bottom-10 left-0 right-0 h-4 bg-black/40 blur-sm rounded-full opacity-30 pointer-events-none" />
-              <div className="absolute -bottom-8 left-0 right-0 h-2 bg-[#333] border-b border-white/5 pointer-events-none" />
-
-              {/* Book Spine Aesthetic */}
-              <div className="w-16 h-48 lg:w-20 lg:h-64 bg-black border-l-8 border-white/5 shrink-0 flex flex-col justify-between p-4 relative shadow-[10px_10px_30px_rgba(0,0,0,0.5)] transition-transform group-hover:translate-x-2">
-                 <div className="text-[8px] font-black uppercase text-white/20 vertical-text tracking-widest">MANIFEST - VOL 0{lesson.id}</div>
-                 <div className="w-full aspect-square bg-white/10 rounded-sm flex items-center justify-center">
-                   <BookOpen className="w-4 h-4 text-white/50" />
+        {/* Cosmic Grid Style */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8 lg:gap-12 relative px-2 sm:px-0">
+           {lessons.map((lesson, idx) => (
+             <motion.div 
+               key={lesson.id} 
+               initial={{ opacity: 0, y: 30 }}
+               whileInView={{ opacity: 1, y: 0 }}
+               viewport={{ once: true }}
+               transition={{ delay: idx * 0.1 }}
+               whileHover={{ y: -5 }}
+               onClick={() => setSelectedLesson(lesson)}
+               className="group cursor-pointer bg-black/40 backdrop-blur-xl rounded-[3rem] border border-white/10 overflow-hidden shadow-2xl flex flex-col min-h-[450px] relative transition-all hover:border-white/30 after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none"
+             >
+               <div className="h-48 relative overflow-hidden">
+                 <img src={lesson.image} alt={lesson.title} className="w-full h-full object-cover grayscale opacity-40 group-hover:grayscale-0 group-hover:opacity-80 transition-all duration-700 group-hover:scale-110" />
+                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                 <div className="absolute top-6 left-6 px-4 py-1.5 bg-white/10 backdrop-blur-md rounded-full border border-white/10">
+                   <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white/60">Module 0{lesson.id}</span>
                  </div>
-              </div>
+               </div>
 
-              <div className="flex flex-col justify-center">
-                 <h4 className="font-serif text-3xl font-black text-white mb-4 group-hover:italic transition-all">{lesson.title}</h4>
-                 <p className="text-stardust/30 font-medium font-serif leading-relaxed line-clamp-3 text-sm lg:text-base border-l-2 border-white/5 pl-4">{lesson.description}</p>
-                 <button onClick={() => setSelectedLesson(lesson)} className="mt-6 flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-white/40 group-hover:text-white transition-colors">
-                    <Play className="w-3 h-3 fill-current" /> Open Volume
-                 </button>
-              </div>
-            </motion.div>
-          ))}
-       </div>
+               <div className="p-8 lg:p-10 flex-grow flex flex-col justify-between relative z-10">
+                 <div>
+                   <h3 className="text-3xl lg:text-4xl font-black mb-6 leading-[0.9] tracking-tighter italic uppercase text-white group-hover:text-emerald-400 transition-colors">{lesson.title}</h3>
+                   <p className="text-[11px] font-black uppercase tracking-[0.2em] text-white/30 italic leading-relaxed line-clamp-3">
+                     {lesson.description}
+                   </p>
+                 </div>
+
+                 <div className="mt-10 pt-8 border-t border-white/5 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                        <Play className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white/20 italic">Initiate Protocol</span>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-white/10 group-hover:text-white transition-all transform group-hover:translate-x-2" />
+                 </div>
+               </div>
+               
+               <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
+             </motion.div>
+           ))}
+        </div>
     </div>
   );
 };
@@ -4073,7 +4826,106 @@ const PlaceholderView = ({ title, description }: { title: string, description: s
   </div>
 );
 
-const PricingView = ({ setView, user, tier, isMobile }: { setView: (v: View) => void, user: User | null, tier: string, isMobile: boolean }) => {
+interface LockedTrialViewProps {
+  setView: (v: View) => void;
+  logout: () => void;
+  desires: any[];
+}
+
+const LockedTrialView = ({ setView, logout, desires }: LockedTrialViewProps) => {
+  const activeDesireText = desires && desires.length > 0 ? desires[0].text : null;
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-16 flex flex-col items-center justify-center min-h-[70vh] text-center relative z-20">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, type: 'spring' }}
+        className="w-24 h-24 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mb-8 relative"
+      >
+        <Lock className="w-10 h-10 text-emerald-400 animate-pulse" />
+        <div className="absolute inset-0 rounded-full border border-emerald-500/10 scale-125 animate-ping opacity-30" />
+      </motion.div>
+
+      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 text-[9px] font-black uppercase tracking-[0.4em] text-rose-400 mb-6 italic">
+        <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+        Trial Period Expired
+      </div>
+
+      <h2 className="text-3xl sm:text-5xl font-black text-white italic tracking-tighter uppercase leading-tight mb-6">
+        Free Alignment <br />
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-white to-emerald-400">
+          Window Closed.
+        </span>
+      </h2>
+
+      <div className="relative max-w-lg mb-8">
+        <p className="text-stardust/70 text-xs sm:text-sm font-bold uppercase tracking-widest leading-relaxed italic">
+          Your 24-Hour Trial was designed to let your physical vessel touch the high-frequency grid. 
+          {activeDesireText ? (
+            <>
+              {" "}We detected your deep alignment to manifest <span className="text-emerald-400 underline font-black">"{activeDesireText}"</span> — which is currently suspended in the sub-quantum blueprint. You are extremely close. Stay aligned, and this physical manifestation will be fully yours! But do not let your frequency drop now.
+            </>
+          ) : (
+            <>
+              {" "}A stable reality is built on constant investment and energetic exchange, not holding back. By staying on the novice layer, you reinforce scarcity. Overcome resistance, step up, and let's manifest your goals.
+            </>
+          )}
+        </p>
+      </div>
+
+      {/* Universe motivation psychology block */}
+      <div className="bg-black/80 backdrop-blur-3xl border border-white/5 rounded-[2rem] p-6 mb-10 w-full max-w-md shadow-2xl relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-tr from-emerald-500/5 to-transparent pointer-events-none" />
+        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400 mb-2 italic flex items-center justify-center gap-2 relative z-10">
+          <Sparkles className="w-3.5 h-3.5" /> Universe Motivation Sync
+        </h4>
+        <p className="text-[11px] font-bold text-stardust/50 leading-relaxed uppercase tracking-wider italic relative z-10">
+          "The distance between your goals and your reality is purely energetic. You are just a single threshold away. Subscribe now to connect with the source perpetually and complete your destiny."
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-4 w-full max-w-sm">
+        <motion.button
+          whileHover={{ scale: 1.02, boxShadow: '0 20px 40px rgba(16,185,129,0.3)' }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => setView('pricing')}
+          className="w-full py-5 rounded-[1.5rem] bg-emerald-500 hover:bg-emerald-400 text-white font-black uppercase text-[10px] tracking-[0.3em] italic shadow-2xl border border-white/10 flex items-center justify-center gap-3 transition-colors"
+        >
+          <Zap className="w-4 h-4 fill-current" />
+          Claim Eternal Alignment
+        </motion.button>
+
+        <button
+          onClick={logout}
+          className="w-full py-4 rounded-[1.5rem] bg-white/5 hover:bg-white/10 text-stardust/60 hover:text-white font-black uppercase text-[9px] tracking-[0.3em] italic transition-all border border-white/5"
+        >
+          Disconnect Vessel (Sign Out)
+        </button>
+      </div>
+
+      <div className="mt-12 bg-white/5 px-4 py-2 rounded-xl border border-white/5">
+        <button
+          onClick={() => {
+            const keys = Object.keys(localStorage);
+            keys.forEach(k => {
+              if (k.startsWith('vibe_os_trial_start_')) {
+                localStorage.setItem(k, Date.now().toString());
+              }
+            });
+            window.location.reload();
+          }}
+          className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-400/40 hover:text-emerald-400 transition-colors italic flex items-center gap-2"
+        >
+          <Sparkles className="w-3 h-3 animate-spin text-emerald-400/60" />
+          [ Dev Action: Reset 1-Day Trial for Review (Get 24h Free) ]
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { setView: (v: View) => void, user: any, tier: string, isMobile: boolean, updateOfflineProfile?: (tierName: string, expiryDate?: Date) => void }) => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'lifetime'>('monthly');
   
@@ -4207,6 +5059,13 @@ const PricingView = ({ setView, user, tier, isMobile }: { setView: (v: View) => 
               else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
               else expiry.setFullYear(expiry.getFullYear() + 100); 
 
+              if (user.isGuest) {
+                updateOfflineProfile(plan.name, expiry);
+                alert(`Payment Verified! Your frequency has ascended to ${plan.name}.`);
+                setView('dashboard');
+                return;
+              }
+
               await updateDoc(doc(db, 'users', user.uid), {
                 tier: plan.name,
                 subscriptionExpiry: Timestamp.fromDate(expiry),
@@ -4268,6 +5127,13 @@ const PricingView = ({ setView, user, tier, isMobile }: { setView: (v: View) => 
       else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
       else expiry.setFullYear(expiry.getFullYear() + 100);
 
+      if (user.isGuest) {
+        updateOfflineProfile(plan.name, expiry);
+        alert(`Simulation Successful! Your frequency has ascended to ${plan.name} (Local Preview Mode).`);
+        setView('dashboard');
+        return;
+      }
+
       await updateDoc(doc(db, 'users', user.uid), {
         tier: plan.name,
         subscriptionExpiry: Timestamp.fromDate(expiry),
@@ -4312,23 +5178,23 @@ const PricingView = ({ setView, user, tier, isMobile }: { setView: (v: View) => 
                              import.meta.env.VITE_PAYPAL_CLIENT_ID !== "sb";
 
   const pricingContent = (
-    <div className="max-w-6xl mx-auto px-4 lg:px-0 pb-10">
-      <div className="mb-12 lg:mb-16 text-center max-w-3xl mx-auto">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black uppercase tracking-[0.4em] text-emerald-400 mb-6 italic">
+    <div className="max-w-6xl mx-auto px-4 lg:px-0 pb-16">
+      <div className="mb-8 text-center max-w-2xl mx-auto">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black uppercase tracking-[0.4em] text-emerald-400 mb-4 italic">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
           Limited Manifestation Window Open
         </div>
         
-        <h2 className="text-4xl lg:text-6xl font-black tracking-tighter mb-6 text-white drop-shadow-2xl uppercase italic leading-[0.9]">
+        <h2 className="text-3xl lg:text-5xl font-black tracking-tighter mb-4 text-white drop-shadow-2xl uppercase italic leading-tight">
           Ascend Your <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-white to-emerald-400">Abundance.</span>
         </h2>
         
-        <p className="text-stardust/40 text-[10px] lg:text-xs font-bold leading-relaxed uppercase tracking-[0.2em] mb-10 italic">
+        <p className="text-stardust/40 text-[9px] lg:text-[10px] font-bold leading-relaxed uppercase tracking-[0.2em] mb-6 italic">
           Join 8,400+ souls already operating at the universal frequency.
         </p>
 
-        <div className="flex flex-col items-center gap-4">
-           <div className="bg-white/5 p-1.5 rounded-[2rem] flex border border-white/10 shadow-2xl">
+        <div className="flex flex-col items-center gap-3">
+           <div className="bg-black/60 p-1 rounded-[1.5rem] flex border border-white/10 shadow-2xl backdrop-blur-xl">
               {[
                 { id: 'monthly', label: 'Monthly' },
                 { id: 'yearly', label: 'Yearly', best: true },
@@ -4337,11 +5203,11 @@ const PricingView = ({ setView, user, tier, isMobile }: { setView: (v: View) => 
                 <button
                   key={cycle.id}
                   onClick={() => setBillingCycle(cycle.id as any)}
-                  className={`relative px-6 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all overflow-hidden ${billingCycle === cycle.id ? 'bg-white text-cosmic-black shadow-2xl' : 'text-stardust/40 hover:text-white'}`}
+                  className={`relative px-4 py-2 rounded-[1.1rem] text-[9px] font-black uppercase tracking-widest transition-all overflow-hidden ${billingCycle === cycle.id ? 'bg-emerald-500/20 text-white shadow-2xl' : 'text-stardust/40 hover:text-white'}`}
                 >
                   {cycle.label}
                   {cycle.best && cycle.id !== billingCycle && (
-                    <div className="absolute top-0 right-0 px-2 py-0.5 bg-emerald-500 text-white text-[6px] font-black italic">Value</div>
+                    <div className="absolute top-0 right-0 px-1.5 py-0.5 bg-emerald-500 text-white text-[5px] font-black italic">Value</div>
                   )}
                 </button>
               ))}
@@ -4361,7 +5227,7 @@ const PricingView = ({ setView, user, tier, isMobile }: { setView: (v: View) => 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch mb-20">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch mb-12 px-2 sm:px-0">
         {plans.map((plan, i) => {
           let effectivePrice = plan.price;
           let savings = 0;
@@ -4379,54 +5245,58 @@ const PricingView = ({ setView, user, tier, isMobile }: { setView: (v: View) => 
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className={`relative p-8 lg:p-10 rounded-[3rem] border backdrop-blur-3xl flex flex-col justify-between group transition-all duration-700 hover:scale-[1.02] ${
+            className={`relative p-5 sm:p-6 rounded-[2rem] border backdrop-blur-3xl flex flex-col justify-between group transition-all duration-700 hover:scale-[1.01] shadow-2xl overflow-visible ${
               plan.recommended 
-                ? 'bg-[#064e3b]/40 border-emerald-500/40 shadow-[0_40px_100px_-20px_rgba(16,185,129,0.3)]' 
-                : 'bg-white/5 border-white/5 hover:bg-white/[0.08]'
+                ? 'bg-black/90 border-emerald-500/40 shadow-emerald-500/10' 
+                : 'bg-black/40 border-white/10 hover:border-white/30'
             }`}
           >
             {plan.recommended && (
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-emerald-500 text-white px-5 py-2 rounded-full text-[9px] font-black uppercase tracking-[0.3em] shadow-[0_10px_30px_rgba(16,185,129,0.5)] z-20 whitespace-nowrap italic">
-                Manifestor's Choice
+              <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-transparent via-emerald-500/60 to-transparent pointer-events-none" />
+            )}
+            
+            {plan.recommended && (
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-emerald-500 text-white px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-[0.4em] shadow-[0_15px_40px_rgba(16,185,129,0.5)] z-20 whitespace-nowrap italic border border-white/20">
+                Resonant Preferred
               </div>
             )}
 
             {savings > 0 && plan.name !== 'Novice' && (
-              <div className="absolute top-6 right-6 px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[8px] font-black uppercase italic tracking-widest">
+              <div className="absolute top-4 right-4 px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[8px] font-black uppercase italic tracking-widest z-10">
                 Save {savings}%
               </div>
             )}
 
             <div>
-              <div className="mb-10">
-                <h4 className={`text-[12px] font-black uppercase tracking-[0.4em] mb-4 italic ${plan.recommended ? 'text-emerald-400' : 'text-stardust/40'}`}>
+              <div className="mb-5">
+                <h4 className={`text-[10px] sm:text-[11px] font-black uppercase tracking-[0.4em] mb-3 italic ${plan.recommended ? 'text-emerald-400' : 'text-stardust/40'}`}>
                   {plan.name}
                 </h4>
                 <div className="flex flex-col">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-5xl lg:text-6xl font-black text-white italic tracking-tighter leading-none">{currencySymbol}{plan.price}</span>
-                    <span className="text-stardust/20 font-bold text-[10px] uppercase tracking-widest">
+                  <div className="flex items-baseline gap-1 flex-wrap">
+                    <span className="text-3xl sm:text-4xl font-black text-white italic tracking-tighter">{currencySymbol}{plan.price}</span>
+                    <span className="text-stardust/20 font-bold text-[9px] uppercase tracking-widest">
                        {billingCycle === 'monthly' ? '/ mo' : billingCycle === 'yearly' ? '/ yr' : 'once'}
                     </span>
                   </div>
                   {billingCycle !== 'monthly' && plan.name !== 'Novice' && (
-                    <div className="mt-2 flex items-center gap-2">
-                       <span className="text-[14px] font-black text-emerald-400 italic">{currencySymbol}{effectivePrice}</span>
-                       <span className="text-[8px] font-black uppercase tracking-widest text-stardust/30">Effective per month</span>
+                    <div className="mt-1 flex items-center gap-2">
+                       <span className="text-[11px] sm:text-[12px] font-black text-emerald-400 italic">{currencySymbol}{effectivePrice}</span>
+                       <span className="text-[7px] font-black uppercase tracking-widest text-stardust/30">Effective per month</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              <p className="text-stardust/60 text-xs font-bold mb-10 leading-relaxed uppercase tracking-wider min-h-[3rem] italic">
+              <p className="text-stardust/60 text-[10px] sm:text-[11px] font-bold mb-5 leading-relaxed uppercase tracking-wider italic">
                 {plan.description}
               </p>
 
-              <div className="space-y-5 mb-12">
+              <div className="space-y-2.5 mb-6">
                 {plan.features.map(feature => (
-                  <div key={feature} className="flex items-center gap-4 text-[11px] font-black text-white/70 uppercase tracking-widest group-hover:text-white transition-colors">
-                    <div className={`w-5 h-5 rounded-lg flex items-center justify-center border shrink-0 transition-all ${plan.recommended ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/5 border-white/10'}`}>
-                      <Check className={`w-3 h-3 ${plan.recommended ? 'text-emerald-400' : 'text-stardust/40'}`} />
+                  <div key={feature} className="flex items-center gap-3 text-[10px] sm:text-[10.5px] font-black text-white/70 uppercase tracking-widest group-hover:text-white transition-colors">
+                    <div className={`w-3.5 h-3.5 sm:w-4 h-4 rounded-lg flex items-center justify-center border shrink-0 transition-all ${plan.recommended ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/5 border-white/10'}`}>
+                      <Check className={`w-2 h-2 sm:w-2.5 h-2.5 ${plan.recommended ? 'text-emerald-400' : 'text-stardust/40'}`} />
                     </div>
                     {feature}
                   </div>
@@ -4435,15 +5305,15 @@ const PricingView = ({ setView, user, tier, isMobile }: { setView: (v: View) => 
             </div>
 
             {plan.isPremium ? (
-              <div className="relative z-10 space-y-4">
+              <div className="relative z-10 space-y-3">
                 {tier === plan.name ? (
-                   <div className="w-full py-5 rounded-[1.5rem] font-black uppercase text-[10px] tracking-[0.3em] bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 flex items-center justify-center gap-2 italic">
-                      <CheckCircle2 className="w-4 h-4" /> Vibrational Match
+                   <div className="w-full py-3.5 rounded-[1.2rem] font-black uppercase text-[9px] tracking-[0.3em] bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 flex items-center justify-center gap-2 italic">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Vibrational Match
                     </div>
                 ) : (
                   <>
                     <motion.button
-                      whileHover={{ scale: 1.02, boxShadow: '0 20px 40px rgba(16,185,129,0.3)' }}
+                      whileHover={{ scale: 1.02, boxShadow: '0 15px 30px rgba(16,185,129,0.3)' }}
                       whileTap={{ scale: 0.98 }}
                       disabled={isVerifying}
                       onClick={() => {
@@ -4456,24 +5326,24 @@ const PricingView = ({ setView, user, tier, isMobile }: { setView: (v: View) => 
                           handleSimulateUpgrade(plan);
                         }
                       }}
-                      className={`w-full py-5 rounded-[1.5rem] font-black uppercase text-[10px] tracking-[0.3em] transition-all shadow-2xl border border-white/10 flex items-center justify-center gap-3 italic ${
+                      className={`w-full py-3.5 rounded-[1.2rem] font-black uppercase text-[9px] tracking-[0.3em] transition-all shadow-2xl border border-white/10 flex items-center justify-center gap-2.5 italic ${
                         plan.recommended 
                           ? 'bg-emerald-500 text-white shadow-emerald-500/20 hover:bg-emerald-400' 
-                          : 'bg-white text-cosmic-black hover:bg-stardust'
+                          : 'bg-white text-black hover:bg-stardust'
                       }`}
                     >
                       {isVerifying ? (
-                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       ) : (
                         <>
-                          {import.meta.env.VITE_RAZORPAY_KEY_ID ? <Zap className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                          <Zap className="w-3.5 h-3.5" />
                           Claim Mastery
                         </>
                       )}
                     </motion.button>
                     
-                    <div className="flex items-center justify-center gap-4 py-2">
-                       <span className="text-[7px] font-black uppercase tracking-[0.3em] text-stardust/20 italic">Risk Free • No Questions • Divine Aligned</span>
+                    <div className="flex items-center justify-center gap-4 py-1">
+                       <span className="text-[7px] font-black uppercase tracking-[0.3em] text-[10px] text-stardust/20 italic">Risk Free • No Questions • Divine Aligned</span>
                     </div>
 
                     <div className="paypal-button-container opacity-60 hover:opacity-100 transition-opacity">
@@ -4487,6 +5357,12 @@ const PricingView = ({ setView, user, tier, isMobile }: { setView: (v: View) => 
                           }}
                           onApprove={async (data, actions) => {
                             if (user) {
+                               if (user.isGuest) {
+                                 updateOfflineProfile(plan.name);
+                                 alert(`Divine Agreement Signed! Frequency ascending.`);
+                                 setView('dashboard');
+                                 return;
+                               }
                                const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore');
                                await updateDoc(doc(db, 'users', user.uid), {
                                  tier: plan.name,
@@ -4507,16 +5383,119 @@ const PricingView = ({ setView, user, tier, isMobile }: { setView: (v: View) => 
                 )}
               </div>
             ) : (
-              <div className="py-5 rounded-[1.5rem] border border-white/10 flex items-center justify-center text-stardust/20 text-[10px] font-black uppercase tracking-[0.3em] italic text-center">
+              <div className="py-3.5 rounded-[1.2rem] border border-white/10 flex items-center justify-center text-stardust/20 text-[9px] font-black uppercase tracking-[0.3em] italic text-center relative z-10">
                 Current Frequency
               </div>
             )}
 
-            <div className={`absolute -right-20 -bottom-20 w-64 h-64 rounded-full blur-[120px] opacity-10 pointer-events-none group-hover:opacity-30 transition-opacity duration-1000 ${
-              plan.recommended ? 'bg-emerald-500' : 'bg-white'
-            }`} />
+            <div className="absolute inset-0 rounded-[2rem] overflow-hidden pointer-events-none z-0">
+              <div className={`absolute -right-20 -bottom-20 w-64 h-64 rounded-full blur-[120px] opacity-10 pointer-events-none group-hover:opacity-30 transition-opacity duration-1000 ${
+                plan.recommended ? 'bg-emerald-500' : 'bg-white'
+              }`} />
+            </div>
           </motion.div>
         )})}
+      </div>
+
+      {/* Seeker Testimony & Manifestation Proof */}
+      <div className="my-20">
+        <div className="mb-10 text-center max-w-xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black uppercase tracking-[0.4em] text-emerald-400 mb-4 italic">
+            <Star className="w-2 h-2 text-emerald-400 fill-current animate-spin" />
+            Verified Quantum Success
+          </div>
+          <h3 className="text-2xl sm:text-4xl font-black italic tracking-tighter text-white uppercase mb-3">
+            Vibrational <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-white">Evidence.</span>
+          </h3>
+          <p className="text-stardust/40 text-[9px] sm:text-[10px] font-bold leading-relaxed uppercase tracking-[0.2em] italic">
+            Hear from souls who shifted their reality by investing in their infinite timeline.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-2 sm:px-0">
+          {[
+            {
+              name: "Aarav Mehta",
+              location: "Bengaluru, India",
+              role: "Quantum Seeker & Dev",
+              manifestation: "Senior Tech Lead & Remote Silicon Valley Offer",
+              quote: "The visual scripting workspace and keeping the 528Hz DNA Repair track playing in the background completely rewired my morning routine. By structuring my core desires here every single morning instead of doomscrolling, my brain-fog vanished. Within three weeks, a Silicon Valley agency connected with me for the exact role I was planning inside my dashboard.",
+              rating: 5,
+              delay: 0.1
+            },
+            {
+              name: "Elena Rostova",
+              location: "Munich, Germany",
+              role: "Holistic Yoga Guide",
+              manifestation: "Bali Spiritual Retreat ($18,000 fully funded)",
+              quote: "This space acts like a clear lens for the mind. Writing down my daily gratitude logs and aligning them with the sub-quantum blueprint features helped me overcome a deep-seated scarcity mindset. I literally mapped out every detail of my retreat layout here. A week later, a private client stepped up to fully sponsor our main venue deposit!",
+              rating: 5,
+              delay: 0.2
+            },
+            {
+              name: "Marcus Vance",
+              location: "Brooklyn, NY",
+              role: "Creator & Visual Director",
+              manifestation: "$12K Creative Agency Retainer",
+              quote: "Most manifestation apps feel incredibly superficial. The sheer sensory immersion of Vibe OS—the sound frequencies, the space graphics, and the strict habit trackers—keeps me intensely focused. It built the daily discipline I needed to pitch my studio confidently, and we locked in our biggest project retainer to date.",
+              rating: 5,
+              delay: 0.3
+            },
+            {
+              name: "Priya Sharma",
+              location: "Mumbai, India",
+              role: "Creative Architect",
+              manifestation: "Dream 2BHK Home Booking",
+              quote: "Having a single sacred digital space to project my desires daily acts as a massive anchor for my thoughts. Instead of just dreaming about my future home, the wealth tracking and visual reminder logs made the goal tangible for my subconscious. Last week, I finalized my first apartment booking in Mumbai!",
+              rating: 5,
+              delay: 0.4
+            }
+          ].map((testimonial, idx) => (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 25 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: testimonial.delay, duration: 0.6 }}
+              className="relative p-6 sm:p-8 rounded-[2rem] border border-white/5 bg-black/40 backdrop-blur-3xl flex flex-col justify-between group overflow-hidden hover:border-emerald-500/20 transition-all duration-500"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/[0.02] blur-3xl rounded-full" />
+              
+              <div>
+                {/* Rating Stars */}
+                <div className="flex gap-1 mb-4">
+                  {[...Array(testimonial.rating)].map((_, i) => (
+                    <Star key={i} className="w-3.5 h-3.5 text-amber-400 fill-current" />
+                  ))}
+                </div>
+
+                {/* Seeker Quote */}
+                <p className="text-stardust/80 text-[10px] sm:text-xs font-medium leading-relaxed uppercase tracking-wider italic mb-6 font-bold">
+                  "{testimonial.quote}"
+                </p>
+              </div>
+
+              {/* Seeker Profile & Manifested Tag */}
+              <div className="border-t border-white/5 pt-4 mt-auto">
+                <div className="flex justify-between items-start gap-4 flex-wrap mb-3">
+                  <div>
+                    <h5 className="text-[10px] sm:text-[11px] font-black uppercase text-white italic">{testimonial.name}</h5>
+                    <span className="text-[7.5px] font-bold text-stardust/40 uppercase tracking-widest">{testimonial.role} • {testimonial.location}</span>
+                  </div>
+                </div>
+
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[7.5px] font-black uppercase tracking-wider text-emerald-400 italic">
+                  <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                  Manifested: {testimonial.manifestation}
+                </div>
+              </div>
+              
+              <div className="absolute inset-0 rounded-[2rem] overflow-hidden pointer-events-none z-0">
+                <div className="absolute -right-20 -bottom-20 w-48 h-48 bg-emerald-500/5 rounded-full blur-[100px] opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+              </div>
+            </motion.div>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-20 py-16 border-y border-white/5">
