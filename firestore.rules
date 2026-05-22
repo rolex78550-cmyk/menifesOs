@@ -31,6 +31,13 @@ service cloud.firestore {
       return ts is timestamp && ts == request.time;
     }
 
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'asartist20@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
     // Validation helpers
     function isValidHabit(data) {
       return data.keys().hasAll(['name', 'streak', 'completed', 'ownerId', 'updatedAt']) &&
@@ -71,7 +78,7 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.keys().hasAll(['email', 'tier', 'updatedAt']) &&
              data.email is string &&
-             data.tier in ['Novice', 'Adept', 'Ascendant'] &&
+             data.tier in ['Novice', 'Adept', 'Ascendant', 'Sovereign', 'Amplified', 'Infinite'] &&
              isServerTimestamp(data.updatedAt);
     }
 
@@ -106,24 +113,24 @@ service cloud.firestore {
 
     // Collection matches
     match /users/{userId} {
-      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow get: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
+      allow list: if isAdmin();
       allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().tier == 'Novice';
-      allow update: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && (
+      allow update: if (isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && (
         incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt']) ||
-        // Allow the client to set tier ONLY if it's currently null/non-existent (initialization)
-        // Actually, my server handles upgrades, so I'll just allow basic profile updates.
         (existing().tier == incoming().tier && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'tier', 'updatedAt']))
-      );
+      )) || (isAdmin() && isValidUser(incoming()));
+      allow delete: if isAdmin();
     }
 
     match /transactions/{transactionId} {
-      allow get: if isOwner(existing());
-      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if isOwner(existing()) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.ownerId == request.auth.uid) || isAdmin();
       allow create: if isSignedIn() && isValidTransaction(incoming());
-      allow update: if isOwner(existing()) && isValidTransaction(incoming()) && (
+      allow update: if (isOwner(existing()) && isValidTransaction(incoming()) && (
         incoming().diff(existing()).affectedKeys().hasOnly(['label', 'amount', 'category', 'timestamp'])
-      );
-      allow delete: if isOwner(existing());
+      )) || (isAdmin() && isValidTransaction(incoming()));
+      allow delete: if isOwner(existing()) || isAdmin();
     }
 
     match /habit_logs/{logId} {

@@ -115,6 +115,7 @@ import {
   TrendingDown
 } from 'lucide-react';
 import { StreakCalendar } from './components/StreakCalendar';
+import AdminView from './components/AdminView';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { 
   AreaChart, 
@@ -132,7 +133,7 @@ import {
 } from 'recharts';
 
 // --- Types ---
-type View = 'dashboard' | 'manifest' | 'habits' | 'vision' | 'wealth' | 'academy' | 'pricing' | 'sonic' | 'terms' | 'privacy' | 'settings';
+type View = 'dashboard' | 'manifest' | 'habits' | 'vision' | 'wealth' | 'academy' | 'pricing' | 'sonic' | 'terms' | 'privacy' | 'settings' | 'admin';
 
 interface Desire {
   id: string;
@@ -351,6 +352,7 @@ const Sidebar = ({ currentView, setView, tier, isMobile }: { currentView: View, 
     { id: 'academy', icon: Library, label: 'Academy' },
     { id: 'pricing', icon: Sparkles, label: 'Upgrade' },
     { id: 'settings', icon: Settings, label: 'Setup' },
+    ...(currentView === 'admin' ? [{ id: 'admin', icon: ShieldCheck, label: 'Admin' }] : [])
   ];
 
   return (
@@ -1682,26 +1684,6 @@ export default function App() {
                       </svg>
                       Sign in with Google
                     </button>
-
-                    {/* FAST TRACK LOGIN BYPASS - 1-click seamless anonymous access */}
-                    <motion.button 
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.99 }}
-                      onClick={async () => {
-                        try {
-                          setIsSigningIn(true);
-                          // Artificial tiny delay for beautiful transition feel
-                          await new Promise(r => setTimeout(r, 900));
-                          await loginAnonymously();
-                        } catch (e: any) {
-                          setIsSigningIn(false);
-                        }
-                      }}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-4 px-6 rounded-2xl font-bold text-sm tracking-wide shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer border border-transparent"
-                    >
-                      <Zap className="w-4 h-4 fill-current text-white" />
-                      Continue as Guest
-                    </motion.button>
                   </div>
 
                   {/* Clean disclaimer/info */}
@@ -1797,6 +1779,25 @@ export default function App() {
       case 'academy': return <AcademyView tier={activeTier} />;
       case 'pricing': return <PricingView setView={setView} user={user} tier={activeTier} isMobile={isMobile} updateOfflineProfile={updateOfflineProfile} />;
       case 'settings': return <SettingsView setView={setView} user={user} tier={userProfile?.tier || 'Novice'} onToast={setActiveToast} expiry={userProfile?.subscriptionExpiry} onLogout={handleAppLogout} />;
+      case 'admin': return (
+        <AdminView 
+          setView={setView}
+          user={user}
+          userProfile={userProfile}
+          updateOfflineProfile={updateOfflineProfile}
+          habits={habits}
+          setHabits={setHabits}
+          desires={desires}
+          setDesires={setDesires}
+          transactions={transactions}
+          setTransactions={setTransactions}
+          visionItems={visionItems}
+          setVisionItems={setVisionItems}
+          diaryEntries={diaryEntries}
+          setDiaryEntries={setDiaryEntries}
+          onToast={setActiveToast}
+        />
+      );
       case 'terms': return <TermsView setView={setView} />;
       case 'privacy': return <PrivacyView setView={setView} />;
     }
@@ -2266,6 +2267,9 @@ const SettingsView = ({ setView, user, tier, onToast, expiry, onLogout }: { setV
               <ul className="space-y-4 text-xs font-bold text-stardust/40 font-serif active-italic">
                 <li onClick={() => setView('privacy')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest underline decoration-white/10">Privacy Protocol</li>
                 <li onClick={() => setView('terms')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest underline decoration-white/10">Terms of Alignment</li>
+                <li onClick={() => setView('admin')} className="hover:text-emerald-400 text-emerald-500 font-sans font-black flex items-center gap-1 cursor-pointer transition-colors uppercase tracking-widest underline decoration-emerald-500/20">
+                  <ShieldCheck className="w-3.5 h-3.5 inline text-emerald-500" /> Admin Control Matrix
+                </li>
                 <li className="text-[8px] opacity-20 uppercase tracking-widest">Build ID: VIBE.2.0.26.RESONANCE</li>
               </ul>
             </div>
@@ -5072,6 +5076,19 @@ const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { 
                 updatedAt: serverTimestamp()
               });
               
+              try {
+                await addDoc(collection(db, 'transactions'), {
+                  type: 'income',
+                  amount: Number(plan.price) || 0,
+                  label: user.displayName || user.email || 'Vibe Seeker',
+                  category: `${plan.name} Sub (${billingCycle})`,
+                  ownerId: user.uid,
+                  timestamp: serverTimestamp()
+                });
+              } catch (txErr) {
+                console.error("Error creating transition invoice:", txErr);
+              }
+              
               alert(`Payment Verified! Your frequency has ascended to ${plan.name}.`);
               setView('dashboard');
             } else {
@@ -5139,6 +5156,20 @@ const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { 
         subscriptionExpiry: Timestamp.fromDate(expiry),
         updatedAt: serverTimestamp()
       });
+      
+      try {
+        await addDoc(collection(db, 'transactions'), {
+          type: 'income',
+          amount: Number(plan.price) || 0,
+          label: user.displayName || user.email || 'Vibe Seeker',
+          category: `${plan.name} Sub (${billingCycle})`,
+          ownerId: user.uid,
+          timestamp: serverTimestamp()
+        });
+      } catch (txErr) {
+        console.error("Error creating transition invoice:", txErr);
+      }
+
       alert(`Simulation Successful! Your frequency has ascended to ${plan.name} (Preview Mode).`);
       setView('dashboard');
     } catch (e) {
@@ -5368,6 +5399,20 @@ const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { 
                                  tier: plan.name,
                                  updatedAt: serverTimestamp()
                                });
+
+                               try {
+                                 await addDoc(collection(db, 'transactions'), {
+                                   type: 'income',
+                                   amount: Number(plan.price) || 0,
+                                   label: user.displayName || user.email || 'Vibe Seeker',
+                                   category: `${plan.name} Sub (${billingCycle})`,
+                                   ownerId: user.uid,
+                                   timestamp: serverTimestamp()
+                                 });
+                               } catch (txErr) {
+                                 console.error("Error creating PayPal transition invoice:", txErr);
+                               }
+
                                alert(`Divine Agreement Signed! Frequency ascending.`);
                                setView('dashboard');
                             }
