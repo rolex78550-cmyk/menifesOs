@@ -51,13 +51,79 @@ const playDivineSound = () => {
   }
 };
 
-const triggerEmailNotification = async (email: string, userName: string | null, ritualName: string) => {
+const playKachingSound = () => {
   try {
-    await fetch('/api/notify-ritual', {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    
+    const audioCtx = new AudioContext();
+    const time = audioCtx.currentTime;
+
+    // 1. Drawer Opening Shimmer (White Noise with fast decay)
+    const bufferSize = audioCtx.sampleRate * 0.12; 
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1200;
+    filter.Q.value = 2.0;
+
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0.12, time);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.12);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(audioCtx.destination);
+    noise.start(time);
+
+    // 2. High Coin Rings Overlapping Natively
+    const pitches = [1900, 2300, 1150];
+    const delays = [0, 0.05, 0.02];
+    const types: OscillatorType[] = ['sine', 'triangle', 'sine'];
+    const volumes = [0.45, 0.28, 0.32];
+    const decays = [0.45, 0.35, 0.55];
+
+    pitches.forEach((freq, idx) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = types[idx];
+      osc.frequency.setValueAtTime(freq, time + delays[idx]);
+      osc.frequency.exponentialRampToValueAtTime(freq - 150, time + delays[idx] + decays[idx]);
+
+      gain.gain.setValueAtTime(0, time);
+      gain.gain.setValueAtTime(0, time + delays[idx]);
+      gain.gain.linearRampToValueAtTime(volumes[idx], time + delays[idx] + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + delays[idx] + decays[idx]);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(time + delays[idx]);
+      osc.stop(time + delays[idx] + decays[idx] + 0.05);
+    });
+
+  } catch (e) {
+    console.warn("Abundance Kaching sound error:", e);
+  }
+};
+
+const triggerEmailNotification = async (email: string, userName: string | null, ritualName: string) => {
+  if (!email || email.includes('guest')) return;
+  try {
+    const response = await fetch('/api/notify-ritual', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, userName, ritualName })
     });
+    const data = await response.json();
+    console.log("[Vibe OS] Notification dispatched:", data);
   } catch (error) {
     console.error("Email notification failed:", error);
   }
@@ -65,6 +131,7 @@ const triggerEmailNotification = async (email: string, userName: string | null, 
 
 import { 
   LayoutDashboard, 
+  Compass,
   CheckSquare, 
   Zap, 
   BookOpen, 
@@ -94,7 +161,10 @@ import {
   Music,
   Volume2,
   Pause,
+  Loader2,
   X,
+  Filter,
+  Headphones,
   Upload,
   Wand2,
   Waves,
@@ -112,10 +182,13 @@ import {
   Calendar,
   BarChart3,
   Clock,
-  TrendingDown
+  TrendingDown,
+  BellRing,
+  Terminal
 } from 'lucide-react';
 import { StreakCalendar } from './components/StreakCalendar';
 import AdminView from './components/AdminView';
+import CinematicTour from './components/CinematicTour';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { 
   AreaChart, 
@@ -133,7 +206,7 @@ import {
 } from 'recharts';
 
 // --- Types ---
-type View = 'dashboard' | 'manifest' | 'habits' | 'vision' | 'wealth' | 'academy' | 'pricing' | 'sonic' | 'terms' | 'privacy' | 'settings' | 'admin';
+type View = 'dashboard' | 'manifest' | 'habits' | 'vision' | 'wealth' | 'academy' | 'pricing' | 'terms' | 'privacy' | 'settings' | 'admin';
 
 interface Desire {
   id: string;
@@ -163,6 +236,7 @@ interface Habit {
   streak: number;
   completed: boolean;
   reminderTime?: string;
+  soundType?: 'divine' | 'kaching';
 }
 
 interface HabitLog {
@@ -341,18 +415,19 @@ const HabitMetricsModal = ({ habit, onClose, onSave }: { habit: Habit, onClose: 
   );
 };
 
-const Sidebar = ({ currentView, setView, tier, isMobile }: { currentView: View, setView: (v: View) => void, tier: string, isMobile: boolean }) => {
+const Sidebar = ({ currentView, setView, tier, isMobile, user }: { currentView: View, setView: (v: View) => void, tier: string, isMobile: boolean, user: any }) => {
+  const isAdmin = user?.email === 'asartist20@gmail.com';
+  
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Omni' },
     { id: 'manifest', icon: Target, label: 'Desire' },
     { id: 'habits', icon: Zap, label: 'Rituals' },
     { id: 'vision', icon: ImageIcon, label: 'Vision' },
     { id: 'wealth', icon: Wallet, label: 'Flow' },
-    { id: 'sonic', icon: Waves, label: 'Sonic' },
     { id: 'academy', icon: Library, label: 'Academy' },
     { id: 'pricing', icon: Sparkles, label: 'Upgrade' },
     { id: 'settings', icon: Settings, label: 'Setup' },
-    ...(currentView === 'admin' ? [{ id: 'admin', icon: ShieldCheck, label: 'Admin' }] : [])
+    ...(isAdmin ? [{ id: 'admin', icon: ShieldCheck, label: 'Admin' }] : [])
   ];
 
   return (
@@ -528,17 +603,7 @@ const CosmicBackground = ({ isMobile }: { isMobile?: boolean }) => {
   );
 };
 
-const insights = [
-  "Your focus creates your reality. Today, focus on abundance.",
-  "The universe and you are one. Align with the frequency of your desires.",
-  "Small rituals pave the way for massive shifts in destiny.",
-  "Trust the timing of your life. The manifestation is unfolding.",
-  "Release resistance. Allow the flow of wealth and joy to enter.",
-  "Every breath is a new opportunity to manifest a better world.",
-  "Your vibration is your currency. Spend it on high-frequency thoughts.",
-  "The secret to manifestation is feeling it before seeing it.",
-  "You are the architect of your soul's journey. Build with love."
-];
+
 
 export default function App() {
   const [isMobile, setIsMobile] = useState(false);
@@ -573,6 +638,68 @@ export default function App() {
   }, []);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<{ tier: string, subscriptionExpiry?: any } | null>(null);
+  
+  // Custom states and hooks for first-time login Walkthrough Tour
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
+  const hasAutoTriggered = useRef(false);
+
+  useEffect(() => {
+    if (!user || !userProfile || hasAutoTriggered.current) {
+      return;
+    }
+
+    const localCompleted = localStorage.getItem(`vibe_os_walkthrough_completed_${user.uid}`);
+    const firestoreCompleted = (userProfile as any).walkthroughCompleted;
+
+    if (!localCompleted && !firestoreCompleted) {
+      setShowWalkthrough(true);
+      hasAutoTriggered.current = true;
+    }
+  }, [user, userProfile]);
+
+  // Reset auto-trigger state when user changes
+  useEffect(() => {
+    hasAutoTriggered.current = false;
+  }, [user?.uid]);
+
+  const handleWalkthroughComplete = async () => {
+    if (!user) return;
+    try {
+      // 1. Mark in LocalStorage immediately
+      localStorage.setItem(`vibe_os_walkthrough_completed_${user.uid}`, 'true');
+
+      // 2. Mark in Firestore if real user
+      if (!user.isGuest) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          walkthroughCompleted: true,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        // Guest Profile update
+        const savedProfile = localStorage.getItem('vibe_os_guest_profile');
+        if (savedProfile) {
+          const parsed = JSON.parse(savedProfile);
+          parsed.walkthroughCompleted = true;
+          localStorage.setItem('vibe_os_guest_profile', JSON.stringify(parsed));
+          setUserProfile(parsed);
+        }
+      }
+      
+      // 3. Close walkthrough
+      setShowWalkthrough(false);
+
+      // 4. In-App Notification / Toast
+      setActiveToast({
+        id: `walkthrough-complete-${Date.now()}`,
+        title: "Walkthrough Alignment Complete",
+        body: "Aapka dynamic tour complete ho gya he! Welcome to high frequency alignment."
+      });
+    } catch (e) {
+      console.error("Walkthrough completion save failed:", e);
+      // Fallback close
+      setShowWalkthrough(false);
+    }
+  };
   
   const updateOfflineProfile = (tierName: string, expiryDate?: Date) => {
     const defaultExpiry = expiryDate || new Date(Date.now() + 365 * 24 * 3600 * 1000);
@@ -652,16 +779,7 @@ export default function App() {
   const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [focusIndex, setFocusIndex] = useState(0);
-  const [insight, setInsight] = useState('Universal energy is flowing through you today.');
   const mainContainerRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const randomInsight = insights[Math.floor(Math.random() * insights.length)];
-    setInsight(randomInsight);
-    const timer = setInterval(() => {
-      setInsight(insights[Math.floor(Math.random() * insights.length)]);
-    }, 1000 * 60 * 60 * 4);
-    return () => clearInterval(timer);
-  }, []);
 
   const [completingHabitId, setCompletingHabitId] = useState<string | null>(null);
   const [activeToast, setActiveToast] = useState<{ id: string, title: string, body: string } | null>(null);
@@ -721,10 +839,17 @@ export default function App() {
   const oscillatorRef = useRef<OscillatorNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   
+  const restartTour = () => {
+    setShowWalkthrough(true);
+    setView('dashboard');
+    window.scrollTo(0, 0);
+  };
+  
   // Custom & Guided Audio Streams (Bhajans, Meditation Tracks & Podcasts)
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const [activeTrack, setActiveTrack] = useState<any | null>(null);
   const [isTrackPlaying, setIsTrackPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [customTracks, setCustomTracks] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('cosmic_custom_tracks');
@@ -748,23 +873,41 @@ export default function App() {
       } else {
         audioPlayerRef.current?.play().catch(e => console.error("Play error:", e));
         setIsTrackPlaying(true);
-        setActiveHz(track.virtualHz || 432);
+        setActiveHz(track.hz || track.virtualHz || 432);
       }
     } else {
+      // If there's an existing player, stop it
       if (audioPlayerRef.current) {
         audioPlayerRef.current.pause();
+        audioPlayerRef.current.src = ""; // Clear source to stop buffering
       }
-      const audio = new Audio(track.url);
+      
+      const audio = new Audio();
+      audio.src = track.url;
       audio.loop = true;
+      audio.load(); // Explicitly load the track
       audioPlayerRef.current = audio;
+      
+      setIsBuffering(true);
+      
+      const handleCanPlay = () => {
+        setIsBuffering(false);
+        audio.play().catch(e => {
+          console.warn("Audio stream blocked or failed.", e);
+          setIsTrackPlaying(false);
+        });
+      };
+      
+      audio.addEventListener('canplaythrough', handleCanPlay, { once: true });
+      audio.addEventListener('error', () => {
+        setIsBuffering(false);
+        setIsTrackPlaying(false);
+        console.error("Audio failed to load:", track.url);
+      }, { once: true });
       
       setIsTrackPlaying(true);
       setActiveTrack(track);
-      setActiveHz(track.virtualHz || 432);
-      
-      audio.play().catch(e => {
-        console.warn("Audio stream blocked or failed, keeping indicator.", e);
-      });
+      setActiveHz(track.hz || track.virtualHz || 432);
     }
   };
 
@@ -784,6 +927,26 @@ export default function App() {
       setActiveTrack(null);
       setActiveHz(null);
     }
+  };
+
+  // Global initialization for audio ends
+  useEffect(() => {
+    const handleEnd = () => setIsTrackPlaying(false);
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.addEventListener('ended', handleEnd);
+    }
+    return () => {
+      audioPlayerRef.current?.removeEventListener('ended', handleEnd);
+    };
+  }, [audioPlayerRef.current]);
+
+  const stopActiveAudio = () => {
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      setIsTrackPlaying(false);
+      setActiveHz(null);
+    }
+    stopFrequency();
   };
 
   const toggleFrequency = (hz: number) => {
@@ -1297,7 +1460,7 @@ export default function App() {
     }
   };
 
-  const addHabit = async (name: string, reminderTime: string) => {
+  const addHabit = async (name: string, reminderTime: string, soundType: 'divine' | 'kaching' = 'divine') => {
     if (!user) return;
     try {
       if (user.isGuest) {
@@ -1307,6 +1470,7 @@ export default function App() {
           streak: 0,
           completed: false,
           reminderTime,
+          soundType,
           ownerId: user.uid,
           updatedAt: new Date().toISOString()
         };
@@ -1321,6 +1485,7 @@ export default function App() {
         streak: 0,
         completed: false,
         reminderTime,
+        soundType,
         ownerId: user.uid,
         updatedAt: serverTimestamp()
       });
@@ -1329,11 +1494,11 @@ export default function App() {
     }
   };
 
-  const updateHabit = async (id: string, name: string, reminderTime: string) => {
+  const updateHabit = async (id: string, name: string, reminderTime: string, soundType: 'divine' | 'kaching' = 'divine') => {
     if (!user) return;
     try {
       if (user.isGuest) {
-        const items = habits.map(h => h.id === id ? { ...h, name, reminderTime, updatedAt: new Date().toISOString() } : h);
+        const items = habits.map(h => h.id === id ? { ...h, name, reminderTime, soundType, updatedAt: new Date().toISOString() } : h);
         localStorage.setItem('vibe_os_guest_habits', JSON.stringify(items));
         setHabits(items);
         return;
@@ -1342,6 +1507,7 @@ export default function App() {
       await updateDoc(doc(db, 'habits', id), {
         name,
         reminderTime,
+        soundType,
         updatedAt: serverTimestamp()
       });
     } catch (error) {
@@ -1487,6 +1653,10 @@ export default function App() {
 
   const [notifiedMinute, setNotifiedMinute] = useState('');
 
+  const formatTimeHHMM = (date: Date) => {
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  };
+
   useEffect(() => {
     // Request permission on mount
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -1494,23 +1664,93 @@ export default function App() {
         Notification.requestPermission();
       }
     }
+
+    // Register Background Service Worker
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then((reg) => {
+          console.log('ManifestOS service worker registered:', reg.scope);
+          // Sync habits to SW as soon as it's ready
+          navigator.serviceWorker.ready.then((readyReg) => {
+            if (readyReg.active) {
+              readyReg.active.postMessage({
+                type: 'SET_HABITS',
+                habits: habits.map(h => ({
+                  id: h.id,
+                  name: h.name,
+                  completed: h.completed,
+                  reminderTime: h.reminderTime,
+                  soundType: h.soundType || 'divine'
+                }))
+              });
+            }
+          });
+        })
+        .catch((err) => {
+          console.error('Service worker registration error:', err);
+        });
+
+      // Handle message events back from background (e.g. notification clicks)
+      const handleServiceWorkerMessage = (event: MessageEvent) => {
+        if (event.data && event.data.type === 'PLAY_KACHING_FROM_BG') {
+          playKachingSound();
+          setActiveToast({
+            id: `sw-kaching-${Date.now()}`,
+            title: "Abundance Wave Injected! 💰",
+            body: "Clicked background alarm trigger detected. Shopify sound generated successfully."
+          });
+        }
+      };
+
+      navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+      return () => {
+        navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+      };
+    }
   }, []);
 
+  // Sync state tracking variables list to service worker on changes
   useEffect(() => {
-    // Check for reminders every 30 seconds
+    const syncWithSW = async () => {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        if (reg.active) {
+          reg.active.postMessage({
+            type: 'SET_HABITS',
+            habits: habits.map(h => ({
+              id: h.id,
+              name: h.name,
+              completed: h.completed,
+              reminderTime: h.reminderTime,
+              soundType: h.soundType || 'divine'
+            }))
+          });
+        }
+      } catch (e) {
+        console.warn("SW sync failed:", e);
+      }
+    };
+    if ('serviceWorker' in navigator) {
+      syncWithSW();
+    }
+  }, [habits]);
+
+  useEffect(() => {
+    // Check for reminders every 15 seconds in foreground
     const interval = setInterval(() => {
       const now = new Date();
-      const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      const currentTime = formatTimeHHMM(now);
       
       if (currentTime !== notifiedMinute) {
         habits.forEach(habit => {
           if (!habit.completed && habit.reminderTime === currentTime) {
-            // Browser Notification
+            // Browser Notification with distinct vibration and sounds
             if ('Notification' in window && Notification.permission === 'granted') {
               new Notification(`Ritual Activation: ${habit.name}`, {
-                body: `Ritual karne ka time aa gya he, ready ho jao! Time for your ritual "${habit.name}". Align your frequency now.`,
-                icon: '/vite.svg'
-              });
+                body: `Ritual karne ka time aa gya he, ready ho jao! "${habit.name}". Align your frequency now.`,
+                icon: '/vite.svg',
+                vibrate: (habit.soundType === 'kaching' ? [120, 80, 220, 80, 420] : [500, 200, 500]) as any
+              } as any);
             }
 
             // In-app Notification
@@ -1520,26 +1760,34 @@ export default function App() {
               body: `Ritual karne ka time aa gya he, ready ho jao! Time for your ritual "${habit.name}". Align your frequency now.`
             });
             
-            // Divine Sound
-            playDivineSound();
+            // Selected customized sound type check
+            if (habit.soundType === 'kaching') {
+              playKachingSound();
+            } else {
+              playDivineSound();
+            }
 
             // Email Notification
             if (user?.email) {
               triggerEmailNotification(user.email, user.displayName, habit.name);
             }
 
-            // Mobile Vibration
+            // Mobile physical vibrational rhythm config
             if ('vibrate' in navigator) {
-              navigator.vibrate([500, 200, 500]);
+              if (habit.soundType === 'kaching') {
+                navigator.vibrate([120, 80, 220, 80, 420]); // upbeat fast kaching rhythm
+              } else {
+                navigator.vibrate([500, 200, 500]); // slow zen wave
+              }
             }
           }
         });
         setNotifiedMinute(currentTime);
       }
-    }, 30000);
+    }, 15000);
 
     return () => clearInterval(interval);
-  }, [habits, notifiedMinute]);
+  }, [habits, notifiedMinute, user]);
 
   if (loading) {
     return (
@@ -1766,22 +2014,30 @@ export default function App() {
         />
       );
       case 'manifest': return <ManifestView desires={desires} addDesire={addDesire} removeDesire={removeDesire} toggleDesire={toggleDesire} isMobile={isMobile} />;
-      case 'habits': return <HabitsView habits={habits} habitLogs={habitLogs} addHabit={addHabit} updateHabit={updateHabit} removeHabit={removeHabit} toggleHabit={toggleHabit} diaryEntries={diaryEntries} addDiaryEntry={addDiaryEntry} isMobile={isMobile} tier={activeTier} />;
+      case 'habits': return <HabitsView habits={habits} habitLogs={habitLogs} addHabit={addHabit} updateHabit={updateHabit} removeHabit={removeHabit} toggleHabit={toggleHabit} setActiveToast={setActiveToast} diaryEntries={diaryEntries} addDiaryEntry={addDiaryEntry} isMobile={isMobile} tier={activeTier} user={user} />;
       case 'vision': return <VisionBoardView items={visionItems} addItem={addVisionItem} removeItem={removeVisionItem} />;
       case 'wealth': return <WealthView transactions={transactions} addTransaction={addTransaction} removeTransaction={removeTransaction} isMobile={isMobile} setView={setView} tier={activeTier} />;
-      case 'sonic': return (
-        <SonicView 
-          activeHz={activeHz} 
-          onToggle={toggleFrequency} 
-          isMobile={isMobile}
-        />
-      );
       case 'academy': return <AcademyView tier={activeTier} />;
       case 'pricing': return <PricingView setView={setView} user={user} tier={activeTier} isMobile={isMobile} updateOfflineProfile={updateOfflineProfile} />;
-      case 'settings': return <SettingsView setView={setView} user={user} tier={userProfile?.tier || 'Novice'} onToast={setActiveToast} expiry={userProfile?.subscriptionExpiry} onLogout={handleAppLogout} />;
-      case 'admin': return (
-        <AdminView 
-          setView={setView}
+      case 'settings': return (
+        <SettingsView 
+          setView={setView} 
+          user={user} 
+          tier={userProfile?.tier || 'Novice'} 
+          onToast={setActiveToast} 
+          expiry={userProfile?.subscriptionExpiry} 
+          onLogout={handleAppLogout} 
+          onTriggerWalkthrough={() => setShowWalkthrough(true)}
+        />
+      );
+      case 'admin': 
+        if (user?.email !== 'asartist20@gmail.com') {
+          setView('dashboard');
+          return null;
+        }
+        return (
+          <AdminView 
+            setView={setView}
           user={user}
           userProfile={userProfile}
           updateOfflineProfile={updateOfflineProfile}
@@ -1807,7 +2063,7 @@ export default function App() {
     <div className="h-screen bg-cosmic-black text-stardust font-sans flex flex-col lg:flex-row relative overflow-hidden gpu">
       <CosmicBackground isMobile={isMobile} />
       
-      <Sidebar currentView={view} setView={setView} tier={userProfile?.tier || 'Novice'} isMobile={isMobile} />
+      <Sidebar currentView={view} setView={setView} tier={userProfile?.tier || 'Novice'} isMobile={isMobile} user={user} />
       
       <AnimatePresence>
         {completingHabitId && (
@@ -1817,68 +2073,20 @@ export default function App() {
             onSave={addHabitLog}
           />
         )}
+        {showWalkthrough && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1000]"
+          >
+            <CinematicTour onComplete={handleWalkthroughComplete} />
+          </motion.div>
+        )}
       </AnimatePresence>
 
       <main ref={mainContainerRef} className="flex-grow lg:pl-72 p-4 lg:p-5 pb-32 lg:pb-0 h-full overflow-y-auto relative z-10 no-scrollbar overscroll-behavior-contain touch-pan-y">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-10 lg:mb-16 pb-8 border-b border-white/5">
-          <div className="w-full lg:w-auto flex items-center justify-between md:block">
-            <div className="space-y-1">
-              <div className="flex items-center gap-3">
-                <div className="lg:hidden w-8 h-8 bg-white/10 backdrop-blur-xl rounded-xl flex items-center justify-center border border-white/10">
-                  <Infinity className="w-4 h-4 text-white" />
-                </div>
-                <h1 className="text-[10px] lg:text-[11px] font-black uppercase tracking-[0.3em] text-white/40">
-                  {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                </h1>
-              </div>
-              <h2 className="text-3xl lg:text-5xl font-black capitalize tracking-tighter text-white drop-shadow-xl flex items-center gap-4 italic">
-                {view}
-                <span className="hidden lg:inline text-[10px] font-black uppercase tracking-[0.5em] text-emerald-500/50 pt-1.5 opacity-80 decoration-emerald-500 underline underline-offset-8">Vibe OS</span>
-              </h2>
-            </div>
-            <div className="md:hidden w-11 h-11 bg-white/5 rounded-2xl overflow-hidden border border-white/10 shrink-0 shadow-lg" onClick={handleAppLogout}>
-               <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid || 'guest_user'}`} alt="Avatar" referrerPolicy="no-referrer" />
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2 sm:gap-4 w-full md:w-auto justify-end">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex-1 md:flex-none flex items-center gap-3 bg-white/5 border border-white/10 px-4 py-3 sm:px-6 sm:py-4 rounded-[1.5rem] sm:rounded-[2rem] max-w-md group cursor-pointer hover:bg-white/[0.08] transition-all relative overflow-hidden"
-              onClick={() => {
-                 const next = insights[(insights.indexOf(insight) + 1) % insights.length];
-                 setInsight(next);
-              }}
-            >
-              <div className="relative z-10 w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-white text-cosmic-black flex items-center justify-center group-hover:rotate-6 transition-transform shrink-0 shadow-xl shadow-white/10">
-                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
-              </div>
-              <div className="relative z-10 overflow-hidden">
-                 <div className="flex items-center gap-2 mb-0.5 sm:mb-1">
-                   <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-stardust/40">Universal Wisdom</p>
-                   <div className="w-1 h-1 rounded-full bg-emerald-400 animate-ping" />
-                 </div>
-                 <motion.p 
-                   key={insight}
-                   initial={{ opacity: 0, y: 5 }}
-                   animate={{ opacity: 1, y: 0 }}
-                   className="text-[10px] sm:text-[13px] font-bold text-white leading-tight italic line-clamp-1 group-hover:text-emerald-400 transition-colors"
-                 >
-                   "{insight}"
-                 </motion.p>
-              </div>
-              <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.02] blur-2xl rounded-full translate-x-10 -translate-y-10 group-hover:bg-emerald-500/10 transition-all" />
-            </motion.div>
 
-            <div className="bg-white/5 border border-white/10 p-2.5 lg:p-3 rounded-2xl text-stardust/40 relative hover:text-stardust hover:bg-white/10 transition-colors cursor-pointer shrink-0" onClick={handleAppLogout}>
-              <X className="w-4 h-4" />
-            </div>
-            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-white/10 rounded-2xl overflow-hidden border border-white/10 ring-2 ring-white/10 shrink-0">
-               <img src={user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid || 'guest_user'}`} alt="Avatar" referrerPolicy="no-referrer" />
-            </div>
-          </div>
-        </header>
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
@@ -1940,34 +2148,6 @@ export default function App() {
               </div>
               <div className="absolute -right-20 -bottom-20 w-40 h-40 bg-emerald-500/5 blur-3xl rounded-full" />
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Floating Audio Status */}
-      <AnimatePresence>
-        {activeHz && (
-          <motion.div 
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-24 lg:bottom-10 right-6 lg:right-10 z-[100] bg-white text-cosmic-black px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-6 border border-white/20 backdrop-blur-xl"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-cosmic-black rounded-xl flex items-center justify-center">
-                <Waves className="w-5 h-5 text-white animate-pulse" />
-              </div>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Sonic Resonance</p>
-                <p className="text-sm font-black tracking-tighter">{activeHz} Hz Active</p>
-              </div>
-            </div>
-            <button 
-              onClick={stopFrequency}
-              className="p-2 bg-cosmic-black/5 hover:bg-cosmic-black/10 rounded-lg transition-colors"
-            >
-              <Pause className="w-5 h-5" />
-            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -2043,7 +2223,7 @@ export default function App() {
   );
 }
 
-const SettingsView = ({ setView, user, tier, onToast, expiry, onLogout }: { setView: (v: View) => void, user: any, tier: string, onToast: (t: any) => void, expiry?: any, onLogout: () => void }) => {
+const SettingsView = ({ setView, user, tier, onToast, expiry, onLogout, onTriggerWalkthrough }: { setView: (v: View) => void, user: any, tier: string, onToast: (t: any) => void, expiry?: any, onLogout: () => void, onTriggerWalkthrough?: () => void }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [isUpdating, setIsUpdating] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -2222,6 +2402,29 @@ const SettingsView = ({ setView, user, tier, onToast, expiry, onLogout }: { setV
           </button>
         </div>
 
+        {/* System & Session */}
+        <div className="bg-black/40 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between shadow-2xl backdrop-blur-xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none md:col-span-2">
+          <div>
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-8 italic">Interactive Guidance</h4>
+            <div className="flex items-center gap-6 mb-6">
+              <div className="w-14 h-14 bg-white/5 rounded-[1.5rem] flex items-center justify-center border border-white/10 shadow-xl">
+                <Compass className="w-6 h-6 text-white animate-pulse" />
+              </div>
+              <div>
+                <p className="text-xl font-black text-white italic uppercase tracking-tighter leading-none mb-1">Onboarding Tour</p>
+                <p className="text-[10px] font-black text-white/20 uppercase tracking-widest italic">Animated Walkthrough Tour</p>
+              </div>
+            </div>
+          </div>
+          <button 
+            type="button"
+            onClick={onTriggerWalkthrough}
+            className="w-full py-5 bg-white text-black hover:bg-slate-100 border border-transparent rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(255,255,255,0.1)] italic cursor-pointer focus:outline-none"
+          >
+            <Compass className="w-4 h-4 text-black" /> Launch Walkthrough Tour
+          </button>
+        </div>
+
         {/* Danger Zone */}
         <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between border-red-500/10">
           <div>
@@ -2258,7 +2461,6 @@ const SettingsView = ({ setView, user, tier, onToast, expiry, onLogout }: { setV
               <h4 className="text-[10px] font-black uppercase tracking-widest text-white mb-6">Support Channels</h4>
               <ul className="space-y-4 text-xs font-bold text-stardust/40">
                 <li className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest">Ritual Assistance</li>
-                <li className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest">Sonic Troubleshooting</li>
                 <li className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest">Architect Feedback</li>
               </ul>
             </div>
@@ -2332,7 +2534,7 @@ const PrivacyView = ({ setView }: { setView: (v: View) => void }) => (
       </section>
       <section>
         <h3 className="text-xl font-bold text-white mb-4">2. Sensory Telemetry</h3>
-        <p>We may collect telemetry regarding application usage to calibrate our sonic healing frequencies and ritual optimization algorithms. This data is anonymized to ensure zero-knowledge identity.</p>
+        <p>We may collect telemetry regarding application usage to calibrate our ritual optimization algorithms. This data is anonymized to ensure zero-knowledge identity.</p>
       </section>
       <section>
         <h3 className="text-xl font-bold text-white mb-4">3. Third-Party Integrations</h3>
@@ -2345,304 +2547,6 @@ const PrivacyView = ({ setView }: { setView: (v: View) => void }) => (
     </div>
   </div>
 );
-
-const SolfeggioVisualizer = ({ activeHz, onToggle }: { activeHz: number | null, onToggle?: (hz: number) => void }) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animationId: number;
-    let phase = 0;
-
-    const resize = () => {
-      const parent = canvas.parentElement;
-      if (parent) {
-        canvas.width = parent.clientWidth * window.devicePixelRatio;
-        canvas.height = parent.clientHeight * window.devicePixelRatio;
-        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-      }
-    };
-
-    resize();
-    window.addEventListener('resize', resize);
-
-    const draw = () => {
-      const width = canvas.width / window.devicePixelRatio;
-      const height = canvas.height / window.devicePixelRatio;
-      ctx.clearRect(0, 0, width, height);
-
-      // Draw faint background grid for authentic oscilloscope look
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.05)';
-      ctx.lineWidth = 1;
-      const gridSize = 40;
-      for (let x = 0; x < width; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-      }
-      for (let y = 0; y < height; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-      }
-
-      // Draw center horizontal baseline
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.1)';
-      ctx.beginPath();
-      ctx.moveTo(0, height / 2);
-      ctx.lineTo(width, height / 2);
-      ctx.stroke();
-
-      const isActive = activeHz !== null;
-      const baseSpeed = isActive ? 0.04 + (activeHz! / 20000) : 0.01;
-      const amplitude = isActive ? Math.min(60, 20 + (activeHz! / 15)) : 8;
-      const frequencyCount = isActive ? (activeHz! / 100) : 1.5;
-
-      phase += baseSpeed;
-
-      // Draw 3 layered harmonic sine waves (golden ratios/overtones) for premium look
-      const waves = [
-        { opacity: 0.1, thickness: 1, freqMult: 0.5, speedMult: 0.5, strokeColor: 'rgba(52, 211, 153, 0.3)' },
-        { opacity: 0.3, thickness: 1.5, freqMult: 2.0, speedMult: 1.5, strokeColor: 'rgba(5, 150, 105, 0.6)' },
-        { opacity: 0.9, thickness: 2.5, freqMult: 1.0, speedMult: 1.0, strokeColor: '#10b981' }
-      ];
-
-      waves.forEach((wave) => {
-        ctx.beginPath();
-        ctx.lineWidth = wave.thickness;
-        ctx.strokeStyle = wave.strokeColor;
-
-        // Apply drop shadow glow to the primary active wave
-        if (isActive && wave.opacity > 0.5) {
-          ctx.shadowBlur = 12;
-          ctx.shadowColor = '#10b981';
-        } else {
-          ctx.shadowBlur = 0;
-        }
-
-        for (let x = 0; x < width; x++) {
-          const progress = x / width;
-          // Fade waves gently at left and right boundaries for premium studio look
-          const edgeFade = Math.sin(progress * Math.PI);
-
-          const angle = (progress * Math.PI * 2 * frequencyCount * wave.freqMult) - (phase * wave.speedMult);
-          const y = (height / 2) + Math.sin(angle) * amplitude * edgeFade;
-
-          if (x === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-        }
-        ctx.stroke();
-      });
-
-      // Clear shadows for text/rest
-      ctx.shadowBlur = 0;
-
-      animationId = requestAnimationFrame(draw);
-    };
-
-    draw();
-
-    return () => {
-      cancelAnimationFrame(animationId);
-      window.removeEventListener('resize', resize);
-    };
-  }, [activeHz]);
-
-  const resonanceQuickTones = [174, 396, 432, 528, 963];
-
-  return (
-    <div className="relative w-full min-h-[14rem] sm:min-h-[16rem] bg-emerald-950/20 rounded-[2rem] border border-emerald-500/20 overflow-hidden shadow-2xl backdrop-blur-3xl p-6 sm:p-8 flex flex-col justify-between gap-4">
-      {/* Background glow */}
-      <div className={`absolute -inset-10 bg-emerald-500/10 blur-[100px] rounded-full transition-opacity duration-1000 ${activeHz ? 'opacity-100' : 'opacity-30'}`} />
-
-      {/* Grid overlay */}
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
-
-      {/* Top dashboard metadata */}
-      <div className="relative z-10 flex justify-between items-start pointer-events-none">
-        <div className="space-y-1">
-          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-            Resonance Monitor
-          </span>
-          <div className="flex items-center gap-2 mt-2">
-            <div className={`w-2 h-2 rounded-full ${activeHz ? 'bg-emerald-400 animate-pulse' : 'bg-emerald-800'}`} />
-            <p className="text-xs font-mono font-bold text-white/60">
-              {activeHz ? `TRANSMITTING @ ${activeHz}.00 HZ` : 'STANDBY - SOLFEGGIO SOURCE DETECTED'}
-            </p>
-          </div>
-        </div>
-        <div className="text-right space-y-1">
-          <p className="text-[9px] font-mono text-emerald-400/40">CALIBRATION ID: PHI-963</p>
-          <p className="text-[9px] font-mono text-emerald-400/40">SYSTEM STATUS: {activeHz ? 'OPTIMAL RESONANCE' : 'RESTING WAVE'}</p>
-        </div>
-      </div>
-
-      {/* Interactive Deck */}
-      {onToggle && (
-        <div className="relative z-20 flex flex-wrap gap-2.5 items-center justify-start py-2">
-          <span className="text-[8px] font-mono font-black text-white/30 uppercase tracking-[0.15em] mr-1">TUNER DECK:</span>
-          {resonanceQuickTones.map((hz) => {
-            const isHzActive = activeHz === hz;
-            return (
-              <button
-                key={hz}
-                onClick={() => onToggle(hz)}
-                className={`px-3 py-1.5 text-[9px] font-bold border rounded-lg font-mono transition-all duration-300 relative overflow-hidden flex items-center gap-1.5 cursor-pointer ${
-                  isHzActive 
-                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.35)]'
-                    : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10 hover:border-white/20 hover:text-white'
-                }`}
-              >
-                {isHzActive && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
-                {hz}Hz
-              </button>
-            );
-          })}
-          {activeHz !== null && (
-            <button
-              onClick={() => onToggle(activeHz)}
-              className="px-3 py-1.5 text-[8px] font-black uppercase tracking-wider border rounded-lg font-mono transition-all duration-300 bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20 cursor-pointer"
-            >
-              Mute
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Bottom telemetry readout */}
-      <div className="relative z-10 flex justify-between items-end pointer-events-none font-mono">
-        <div className="space-y-0.5">
-          <p className="text-[10px] text-white/40">BASE SYLLABLE: {activeHz ? getSolfeggioSyllable(activeHz) : 'N/A'}</p>
-          <p className="text-[10px] text-white/40">TUNING BASIS: A4 = 432HZ / SOLFEGGIO</p>
-        </div>
-        <div className="text-right space-y-0.5">
-          <p className="text-[10px] text-emerald-400/60 font-bold">{activeHz ? 'PHASE LOCK: 360°' : 'PHASE LOCK: STANDBY'}</p>
-          <p className="text-[10px] text-emerald-400/40">HARMONICS MULTIPLE: 1.618</p>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Helper helper to get traditional syllable names
-const getSolfeggioSyllable = (hz: number) => {
-  switch (hz) {
-    case 174: return 'FOUNDATION - BASE TONE';
-    case 285: return 'COGNITION - FIELD RECOVERY';
-    case 396: return 'UT - LIBERATOR OF GUILT & FEAR';
-    case 417: return 'RE - RESCUE / UNDO SYSTEMIC TRAUMA';
-    case 432: return 'NATURAL EARTH TUNING';
-    case 528: return 'MI - MIRACLE FREQUENCY / DNA BLUEPRINT';
-    case 639: return 'FA - HARMONIC UNION / FAMILY COMMUNION';
-    case 741: return 'SOL - CONSCIOUS EXPRESSION & CLEANSING';
-    case 852: return 'LA - AWAKENING DIVINE ORDER';
-    case 963: return 'SI - COSMIC CROWN / ONENESS SOURCE';
-    default: return 'RESONATING FREQUENCY';
-  }
-};
-
-const SonicView = ({ 
-  activeHz, 
-  onToggle, 
-  isMobile
-}: { 
-  activeHz: number | null, 
-  onToggle: (hz: number) => void, 
-  isMobile: boolean
-}) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.play().catch(err => console.log("Video play blocked:", err));
-    }
-  }, []);
-
-  return (
-    <div className="max-w-6xl mx-auto px-4 lg:px-0">
-      <div className="relative w-full h-[320px] sm:h-[420px] lg:h-[480px] rounded-[3rem] overflow-hidden border border-white/10 shadow-2xl group group/sonic bg-black">
-        <video 
-          ref={videoRef}
-          autoPlay 
-          loop 
-          muted 
-          playsInline 
-          key="sonic-bg-video-final"
-          className="absolute inset-0 w-full h-full object-cover"
-        >
-          <source src="https://assets.mixkit.co/videos/preview/mixkit-stars-in-the-deep-space-deep-space-atmosphere-443-large.mp4" type="video/mp4" />
-          <source src="https://static.videezy.com/system/resources/previews/000/039/035/original/galactic-tide-loop.mp4" type="video/mp4" />
-        </video>
-        
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/30 pointer-events-none" />
-        
-        {/* Visually Stunning Energy Waves */}
-        <div className="absolute inset-x-0 bottom-0 top-1/4 pointer-events-none opacity-40 mix-blend-screen">
-          <svg className="w-full h-full" viewBox="0 0 1440 400" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="sonic-wave-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#10b981" stopOpacity="0" />
-                <stop offset="50%" stopColor="#34d399" stopOpacity="0.6" />
-                <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <motion.path
-              animate={{
-                d: [
-                  "M0 200 Q 360 150 720 200 T 1440 200 V 400 H 0 Z",
-                  "M0 200 Q 360 250 720 200 T 1440 200 V 400 H 0 Z",
-                  "M0 200 Q 360 150 720 200 T 1440 200 V 400 H 0 Z"
-                ]
-              }}
-              transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-              fill="url(#sonic-wave-grad)"
-              className="opacity-50"
-            />
-          </svg>
-        </div>
-        
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 z-10">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="px-6 py-2 rounded-full bg-black/40 backdrop-blur-2xl border border-white/10 text-[9px] font-black uppercase tracking-[0.6em] text-emerald-400 mb-6 italic flex items-center gap-4 shadow-2xl"
-          >
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-            Universal Transit Active
-          </motion.div>
-          
-          <h2 className="text-4xl sm:text-6xl lg:text-8xl font-black text-white italic tracking-tighter uppercase leading-tight drop-shadow-[0_20px_50px_rgba(0,0,0,1)] px-6">
-            Cosmic <br /><span className="text-emerald-400">Harmony.</span>
-          </h2>
-        </div>
-
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-10 sm:gap-20 opacity-60 pointer-events-none">
-           <div className="flex flex-col items-center">
-             <span className="text-[9px] font-black uppercase tracking-[0.4em] text-white/40 mb-1">Velocity</span>
-             <span className="text-xs font-mono text-emerald-400">9c</span>
-           </div>
-           <div className="flex flex-col items-center">
-             <span className="text-[9px] font-black uppercase tracking-[0.4em] text-white/40 mb-1">Vector</span>
-             <span className="text-xs font-mono text-emerald-400">Theta</span>
-           </div>
-           <div className="flex flex-col items-center">
-             <span className="text-[9px] font-black uppercase tracking-[0.4em] text-white/40 mb-1">Depth</span>
-             <span className="text-xs font-mono text-emerald-400">Deep</span>
-           </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // --- View Sub-components ---
 
@@ -3087,14 +2991,6 @@ const DashboardView = ({
               ))}
             </div>
           </div>
-
-          {/* Interactive Toggle for Audio (Optional Visual Only) */}
-          <button 
-             onClick={() => activeHz ? onToggle(activeHz) : onToggle(528)}
-             className="absolute bottom-8 right-8 sm:bottom-12 sm:right-12 p-4 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl hover:bg-white hover:text-black transition-all duration-500 group/btn shadow-2xl z-20"
-          >
-            {activeHz ? <Activity className="w-5 h-5 animate-pulse" /> : <Infinity className="w-5 h-5" />}
-          </button>
         </div>
       </motion.div>
 
@@ -3152,7 +3048,6 @@ const DashboardView = ({
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.1 }}
         className="sm:col-span-1 lg:col-span-1 border border-white/10 bg-black backdrop-blur-xl rounded-[2.5rem] relative overflow-hidden group min-h-[340px] sm:min-h-[400px] shadow-2xl transition-all hover:border-white/30"
       >
         <video 
@@ -3183,7 +3078,6 @@ const DashboardView = ({
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
         whileHover={{ y: -5 }}
         className="md:col-span-1 lg:col-span-1 border border-white/10 bg-black backdrop-blur-xl rounded-[2.5rem] p-6 sm:p-8 pb-8 sm:pb-10 shadow-2xl relative overflow-hidden group flex flex-col min-h-[380px] transition-all hover:border-white/30 after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none"
       >
@@ -3749,6 +3643,7 @@ const WealthView = ({
     }
     if (!amount || !label) return;
     addTransaction(type, parseFloat(amount), label, category);
+    if (type === 'income') playKachingSound();
     setShowAdd(false);
     setAmount('');
     setLabel('');
@@ -4048,21 +3943,25 @@ const HabitsView = ({
   updateHabit, 
   removeHabit, 
   toggleHabit,
+  setActiveToast,
   diaryEntries,
   addDiaryEntry,
   isMobile,
-  tier
+  tier,
+  user
 }: { 
   habits: Habit[], 
   habitLogs: HabitLog[],
-  addHabit: (n: string, r: string) => void,
-  updateHabit: (id: string, n: string, r: string) => void,
+  addHabit: (n: string, r: string, s: 'divine' | 'kaching') => void,
+  updateHabit: (id: string, n: string, r: string, s: 'divine' | 'kaching') => void,
   removeHabit: (id: string) => void,
   toggleHabit: (id: string, e?: MouseEvent) => void,
+  setActiveToast: (toast: { id: string, title: string, body: string } | null) => void,
   diaryEntries: DiaryEntry[],
   addDiaryEntry: (c: string, m: 'free' | '369' | '555') => void,
   isMobile: boolean,
-  tier: string
+  tier: string,
+  user: any
 }) => {
   const [tab, setTab] = useState<'rituals' | 'diary'>('rituals');
   const [isAdding, setIsAdding] = useState(false);
@@ -4070,6 +3969,7 @@ const HabitsView = ({
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [reminder, setReminder] = useState('');
+  const [soundType, setSoundType] = useState<'divine' | 'kaching'>('divine');
 
   const handleAddRitual = () => {
     if (tier === 'Novice' && habits.length >= 3) {
@@ -4082,9 +3982,9 @@ const HabitsView = ({
   const handleSave = () => {
     if (!name) return;
     if (editingHabit) {
-      updateHabit(editingHabit.id, name, reminder);
+      updateHabit(editingHabit.id, name, reminder, soundType);
     } else {
-      addHabit(name, reminder);
+      addHabit(name, reminder, soundType);
     }
     closeModal();
   };
@@ -4094,12 +3994,14 @@ const HabitsView = ({
     setEditingHabit(null);
     setName('');
     setReminder('');
+    setSoundType('divine');
   };
 
   const openEdit = (habit: Habit) => {
     setEditingHabit(habit);
     setName(habit.name);
     setReminder(habit.reminderTime || '');
+    setSoundType(habit.soundType || 'divine');
     setIsAdding(true);
   };
 
@@ -4211,18 +4113,63 @@ const HabitsView = ({
                                   if ('Notification' in window) {
                                     Notification.requestPermission().then(permission => {
                                       if (permission === 'granted') {
-                                        new Notification("Alignment Confirmed", { body: "You will receive rituals reminders in this dimension." });
+                                        new Notification("Alignment Confirmed", { 
+                                          body: "Frequency synchronization active. You will receive cosmic reminders.",
+                                          icon: '/vite.svg'
+                                        });
+                                        setActiveToast({
+                                          id: 'test-notif',
+                                          title: 'Matrix Synchronized',
+                                          body: 'Browser notifications are now active. Frequency sound will play during triggers.'
+                                        });
+                                        // Optional: trigger a test email if user has a real email
+                                        if (user?.email && !user.isGuest) {
+                                          triggerEmailNotification(user.email, user.displayName, "Test Ritual Connection");
+                                        }
                                       }
                                     });
                                   }
                                 }}
-                                className="p-4 bg-white/10 rounded-2xl text-stardust hover:text-white transition-colors flex items-center justify-center"
-                                title="Enable Browser Notifications"
+                                className="p-4 bg-white/10 rounded-2xl text-stardust hover:text-white transition-colors flex items-center justify-center shrink-0 border border-white/10"
+                                title="Sync Cosmic Notifications"
                               >
-                                <Bell className="w-5 h-5" />
+                                <BellRing className="w-5 h-5 text-emerald-400" />
                               </button>
                             </div>
                             <p className="text-[9px] text-stardust/20 mt-2 italic">Define the exact moment you wish to align your vibration.</p>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-stardust/40 mb-3 text-white/60">Frequency Sound Signature</label>
+                            <div className="grid grid-cols-2 gap-3.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSoundType('divine');
+                                  playDivineSound();
+                                }}
+                                className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden group ${soundType === 'divine' ? 'bg-white/10 text-white border-white/30' : 'bg-white/5 text-stardust/50 border-white/5 hover:border-white/10'}`}
+                              >
+                                <div className="text-xs font-black uppercase tracking-tight mb-1 flex items-center gap-1.5">
+                                  <Waves className="w-3.5 h-3.5 text-blue-400" /> Divine 528Hz
+                                </div>
+                                <div className="text-[9px] font-semibold text-stardust/30 group-hover:text-stardust/50 transition-colors">Test Zen Healing Wave</div>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSoundType('kaching');
+                                  playKachingSound();
+                                }}
+                                className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden group ${soundType === 'kaching' ? 'bg-white/10 text-white border-white/30' : 'bg-white/5 text-stardust/50 border-white/5 hover:border-white/10'}`}
+                              >
+                                <div className="text-xs font-black uppercase tracking-tight mb-1 flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Abundance Chime
+                                </div>
+                                <div className="text-[9px] font-semibold text-stardust/30 group-hover:text-stardust/50 transition-colors">Test Shopify Kaching 💰</div>
+                              </button>
+                            </div>
                           </div>
 
                           <div className="pt-4 flex gap-3">
@@ -4278,6 +4225,15 @@ const HabitsView = ({
                             ) : (
                               <p className="text-[10px] font-black text-stardust/30 uppercase tracking-widest px-2 py-1">Continuous Flow</p>
                             )}
+                            {habit.soundType === 'kaching' ? (
+                              <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest flex items-center gap-1.5 bg-amber-500/5 px-2.5 py-1 rounded-md border border-amber-500/10" title="Shopify Abundance Kaching Alarm">
+                                💰 Kaching Chime
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-1.5 bg-sky-500/5 px-2.5 py-1 rounded-md border border-sky-500/10" title="Divine Freq Solfeggio Alarm">
+                                🧘 Divine 528Hz
+                              </span>
+                            )}
                             <button 
                               onClick={(e) => { e.stopPropagation(); openEdit(habit); }}
                               className="text-[10px] font-black text-stardust/40 uppercase tracking-widest hover:text-white transition-colors bg-white/5 px-3 py-1 rounded-md border border-white/5"
@@ -4298,6 +4254,10 @@ const HabitsView = ({
       ) : (
         <SacredJournaling entries={diaryEntries} onSave={addDiaryEntry} />
       )}
+
+      {/* Diagnostic Troubleshooting removed per user request */}
+
+      <div className="h-20" />
     </div>
   );
 };
@@ -4586,7 +4546,7 @@ const AcademyView = ({ tier }: { tier: string }) => {
       title: 'The 3-6-9 Universal Frequency', 
       description: 'Master the technique used by Nikola Tesla to program the subconscious mind using numbers 3, 6, and 9.', 
       trick: 'Write your desire 3 times in the morning, 6 times in the afternoon, and 9 times before sleep.',
-      image: 'https://images.unsplash.com/photo-1502481851512-e9e2529bbbf9?q=80&w=1000&auto=format',
+      image: '/academy-1.png',
       fullStep: [
         'Define a single, clear intention in the present tense (e.g., "I am receiving $5000").',
         'Morning: Write it 3 times to set the vibration for the day.',
@@ -4600,7 +4560,7 @@ const AcademyView = ({ tier }: { tier: string }) => {
       title: 'Ho\'oponopono: Spiritual Cleaning', 
       description: 'An ancient Hawaiian practice of reconciliation and forgiveness to clean your mental slate.', 
       trick: 'Repeat "I am sorry. Please forgive me. Thank you. I love you" until you feel a shift.',
-      image: 'https://images.unsplash.com/photo-1499209974431-9dac3adaf471?q=80&w=1000&auto=format',
+      image: '/academy-2.png',
       fullStep: [
         'Identify a problem, a person, or a self-limiting belief causing you stress.',
         'Close your eyes and visualize the situation clearly.',
@@ -4614,7 +4574,7 @@ const AcademyView = ({ tier }: { tier: string }) => {
       title: 'The Law of Assumption', 
       description: 'Neville Goddard\'s core teaching: Assume the feeling of your wish fulfilled until it hardens into fact.', 
       trick: 'Live in the end. Occupy the state of already having what you want.',
-      image: 'https://images.unsplash.com/photo-1493612276216-ee3925520721?q=80&w=1000&auto=format',
+      image: '/academy-3.png',
       fullStep: [
         'Identify your desire clearly.',
         'Enter a State Akin To Sleep (SATS) — a drowsy, meditative state.',
@@ -4628,7 +4588,7 @@ const AcademyView = ({ tier }: { tier: string }) => {
       title: 'Visualisation & Scripting', 
       description: 'Crafting the mental movies of your future and writing them into existence.', 
       trick: 'Write a diary entry from 1 year in the future as if everything has already happened.',
-      image: 'https://images.unsplash.com/photo-1455390582262-044cdead277a?q=80&w=1000&auto=format',
+      image: '/academy-4.png',
       fullStep: [
         'Use sensory language: colors, smells, sounds, and most importantly, emotions.',
         'Write in the past tense: "I can\'t believe how amazing this year was..."',
@@ -4642,7 +4602,7 @@ const AcademyView = ({ tier }: { tier: string }) => {
       title: 'The Secret: Law of Attraction', 
       description: 'Master the fundamental principle that thoughts become things and like attracts like.', 
       trick: 'Ask, Believe, Receive. Feel the gratitude before it happens.',
-      image: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=1000&auto=format',
+      image: '/academy-5.png',
       fullStep: [
         'Ask: Be crystal clear about what you want. Send a command to the universe.',
         'Believe: Act, speak, and think as though you have already received it.',
@@ -4656,7 +4616,7 @@ const AcademyView = ({ tier }: { tier: string }) => {
       title: 'Quantum Leaping & Jumping', 
       description: 'Understanding manifestation as shifting to a parallel reality where your desire already exists.', 
       trick: 'Shift your identity instantly by deciding "I am that version of me."',
-      image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?q=80&w=1000&auto=format',
+      image: '/academy-6.png',
       fullStep: [
         'Acknowledge that all versions of you exist in the present moment.',
         'Identify which version you want to align with.',
@@ -4670,7 +4630,7 @@ const AcademyView = ({ tier }: { tier: string }) => {
       title: 'Eastern Wisdom on Manifestation', 
       description: 'Osho, Buddha, and the Gita on intention, presence, and detachment.', 
       trick: 'Practice "Nishkama Karma": Work with full vigor but no neediness for the result.',
-      image: 'https://images.unsplash.com/photo-1545389336-cf090694735e?q=80&w=1000&auto=format',
+      image: '/academy-7.png',
       fullStep: [
         'Study "Sankalpa" (divine intent) from vedantic texts.',
         'Observe your desires like Osho suggests, without identifying with them.',
@@ -4696,6 +4656,11 @@ const AcademyView = ({ tier }: { tier: string }) => {
           animate={{ opacity: 1, scale: 1 }}
           className="bg-black/60 text-white shadow-2xl rounded-[3rem] min-h-[85vh] relative flex flex-col lg:flex-row overflow-hidden border border-white/10 backdrop-blur-3xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-emerald-500/10 after:to-transparent after:pointer-events-none"
         >
+          {/* Background Image Preview */}
+          <div className="absolute inset-x-0 top-0 h-64 lg:h-full lg:w-full opacity-20 pointer-events-none overflow-hidden">
+            <img src={selectedLesson.image} alt="" className="w-full h-full object-cover blur-3xl scale-150" />
+          </div>
+
           {/* Left Column - Divine Theory */}
           <div className="lg:w-1/2 p-10 lg:p-20 relative border-r border-white/5 flex flex-col justify-center">
             <div className="relative z-10">
@@ -4781,11 +4746,11 @@ const AcademyView = ({ tier }: { tier: string }) => {
                onClick={() => setSelectedLesson(lesson)}
                className="group cursor-pointer bg-black/40 backdrop-blur-xl rounded-[3rem] border border-white/10 overflow-hidden shadow-2xl flex flex-col min-h-[450px] relative transition-all hover:border-white/30 after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none"
              >
-               <div className="h-48 relative overflow-hidden">
-                 <img src={lesson.image} alt={lesson.title} className="w-full h-full object-cover grayscale opacity-40 group-hover:grayscale-0 group-hover:opacity-80 transition-all duration-700 group-hover:scale-110" />
-                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                 <div className="absolute top-6 left-6 px-4 py-1.5 bg-white/10 backdrop-blur-md rounded-full border border-white/10">
-                   <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white/60">Module 0{lesson.id}</span>
+               <div className="h-64 relative overflow-hidden">
+                 <img src={lesson.image} alt={lesson.title} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-1000" />
+                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-60" />
+                 <div className="absolute top-6 left-6 px-4 py-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10">
+                   <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white">Module 0{lesson.id}</span>
                  </div>
                </div>
 
@@ -4932,9 +4897,8 @@ const LockedTrialView = ({ setView, logout, desires }: LockedTrialViewProps) => 
 const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { setView: (v: View) => void, user: any, tier: string, isMobile: boolean, updateOfflineProfile?: (tierName: string, expiryDate?: Date) => void }) => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'lifetime'>('monthly');
-  
-  // Detect if user is from India
-  const isIndianUser = useMemo(() => {
+  const [isIndianUser, setIsIndianUser] = useState<boolean>(() => {
+    // Initial heuristic detection
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const lang = navigator.language || (navigator as any).userLanguage;
@@ -4942,6 +4906,22 @@ const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { 
     } catch (e) {
       return false;
     }
+  });
+  
+  useEffect(() => {
+    // Fetch precise location for better accuracy
+    fetch('https://ipapi.co/json/')
+      .then(res => res.json())
+      .then(data => {
+        if (data.country_code === 'IN') {
+          setIsIndianUser(true);
+        } else if (data.country_code) {
+          setIsIndianUser(false);
+        }
+      })
+      .catch((err) => {
+        console.warn("Location detection service unavailable, falling back to browser heuristics.", err);
+      });
   }, []);
 
   const currencySymbol = isIndianUser ? '₹' : '$';
@@ -5351,9 +5331,12 @@ const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { 
                         const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
                         const isConfigured = rzpKey && rzpKey !== "your_razorpay_key_id_here";
                         
-                        if (isConfigured) {
+                        // Default to Razorpay for Indian users if configured, else simulation or paypal if needed
+                        if (isIndianUser && isConfigured) {
                           handleRazorpayPayment(plan);
                         } else {
+                          // For non-Indian users or if Razorpay isn't set up, we currently use simulation
+                          // (In a real production app, we'd trigger PayPal here for USD)
                           handleSimulateUpgrade(plan);
                         }
                       }}
@@ -5569,7 +5552,6 @@ const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { 
                <span className="text-[8px] font-black uppercase tracking-[0.4em] text-stardust/20 mb-4 block italic text-center md:text-left">Novice Restriction</span>
                <div className="space-y-4">
                   <div className="text-[10px] font-bold text-stardust/40 line-through uppercase tracking-widest">Unlimited AI Scripting</div>
-                  <div className="text-[10px] font-bold text-stardust/40 line-through uppercase tracking-widest">432Hz Sonic Protocols</div>
                   <div className="text-[10px] font-bold text-stardust/40 line-through uppercase tracking-widest">Priority Quantum Sync</div>
                   <div className="text-[10px] font-bold text-stardust/30 uppercase tracking-widest">Limited Potential</div>
                </div>

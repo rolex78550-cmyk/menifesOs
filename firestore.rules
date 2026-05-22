@@ -46,7 +46,8 @@ service cloud.firestore {
              data.completed is bool &&
              data.ownerId == request.auth.uid &&
              isServerTimestamp(data.updatedAt) &&
-             (!('reminderTime' in data) || (data.reminderTime is string && data.reminderTime.size() <= 5));
+             (!('reminderTime' in data) || (data.reminderTime is string && data.reminderTime.size() <= 5)) &&
+             (!('soundType' in data) || (data.soundType is string && data.soundType in ['divine', 'kaching']));
     }
 
     function isValidDesire(data) {
@@ -153,7 +154,7 @@ service cloud.firestore {
       allow create: if isSignedIn() && isValidHabit(incoming());
       allow update: if isSignedIn() && isOwner(existing()) && isValidHabit(incoming()) && (
         incoming().diff(existing()).affectedKeys().hasOnly(['completed', 'streak', 'updatedAt']) ||
-        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'reminderTime', 'updatedAt'])
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'reminderTime', 'soundType', 'updatedAt'])
       );
       allow delete: if isOwner(existing());
     }

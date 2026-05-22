@@ -214,6 +214,16 @@
   animation: accretion-drift 15s ease-in-out infinite;
 }
 
+@keyframes scan {
+  0% { transform: translateY(-100%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
+.animate-scan {
+  animation: scan 8s linear infinite;
+}
+
 .black-hole-glow {
   background: radial-gradient(circle at center, transparent 30%, rgba(255, 255, 255, 0.1) 40%, rgba(255, 255, 255, 0.05) 60%, transparent 80%);
 }

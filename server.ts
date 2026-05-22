@@ -16,7 +16,8 @@ app.use(express.json());
 app.use(cors());
 
 // Resend Initialization
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const RESEND_KEY = process.env.RESEND_API_KEY || 're_h2t9ZGT8_7VAQeDnv1nQafRcb5vsbwkqr';
+const resend = RESEND_KEY ? new Resend(RESEND_KEY) : null;
 
 // Razorpay Initialization Helper
 const getRazorpay = () => {
@@ -202,19 +203,14 @@ async function startServer() {
     });
   }
 
-  // Only listen if not on Vercel
-  if (!process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`[Vibe OS] Server running on http://localhost:${PORT}`);
-    });
-  }
+  // Start server
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[Vibe OS] Server running on http://localhost:${PORT}`);
+  });
 
   return app;
 }
 
-// Start server if not on Vercel
-if (!process.env.VERCEL) {
-  startServer();
-}
+startServer();
 
 export default app;

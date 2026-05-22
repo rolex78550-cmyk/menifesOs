@@ -9,6 +9,7 @@
         "streak": { "type": "integer" },
         "completed": { "type": "boolean" },
         "reminderTime": { "type": "string", "description": "HH:mm format" },
+        "soundType": { "type": "string", "enum": ["divine", "kaching"] },
         "ownerId": { "type": "string" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
