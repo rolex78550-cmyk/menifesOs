@@ -80,7 +80,9 @@ service cloud.firestore {
       return data.keys().hasAll(['email', 'tier', 'updatedAt']) &&
              data.email is string &&
              data.tier in ['Novice', 'Adept', 'Ascendant', 'Sovereign', 'Amplified', 'Infinite'] &&
-             isServerTimestamp(data.updatedAt);
+             isServerTimestamp(data.updatedAt) &&
+             (!('walkthroughCompleted' in data) || data.walkthroughCompleted is bool) &&
+             (!('subscriptionExpiry' in data) || data.subscriptionExpiry is timestamp);
     }
 
     function isValidHabitLog(data) {
@@ -118,8 +120,9 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().tier == 'Novice';
       allow update: if (isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && (
-        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt']) ||
-        (existing().tier == incoming().tier && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'tier', 'updatedAt']))
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'walkthroughCompleted', 'updatedAt']) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['tier', 'subscriptionExpiry', 'updatedAt']) ||
+        (existing().tier == incoming().tier && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'tier', 'walkthroughCompleted', 'subscriptionExpiry', 'updatedAt']))
       )) || (isAdmin() && isValidUser(incoming()));
       allow delete: if isAdmin();
     }

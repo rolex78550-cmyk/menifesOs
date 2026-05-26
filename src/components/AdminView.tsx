@@ -26,7 +26,11 @@ import {
   UserCheck,
   UserX,
   PlusCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  BookOpen,
+  Layout,
+  Settings as SettingsIcon,
+  Globe
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -120,7 +124,7 @@ export default function AdminView({
   setDiaryEntries,
   onToast
 }: AdminViewProps) {
-  const [activeTab, setActiveTab] = useState<'users' | 'payments' | 'diagnostics'>('payments');
+  const [activeTab, setActiveTab] = useState<'users' | 'payments' | 'diagnostics' | 'content' | 'config'>('payments');
   
   const [showSimulatedData, setShowSimulatedData] = useState<boolean>(() => {
     return localStorage.getItem('vibe_os_admin_show_simulated') === 'true'; // Defaults to false
@@ -992,7 +996,19 @@ export default function AdminView({
           onClick={() => { setActiveTab('users'); setSearchQuery(''); }}
           className={`px-6 py-3.5 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all cursor-pointer ${activeTab === 'users' ? 'bg-white text-black font-black' : 'bg-white/5 text-stardust/40 hover:bg-white/10 hover:text-white'}`}
         >
-          User Account Consciousness Matrix ({adminUsers.length})
+          User Registry ({adminUsers.length})
+        </button>
+        <button 
+          onClick={() => { setActiveTab('content'); setSearchQuery(''); }}
+          className={`px-6 py-3.5 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all cursor-pointer ${activeTab === 'content' ? 'bg-white text-black font-black' : 'bg-white/5 text-stardust/40 hover:bg-white/10 hover:text-white'}`}
+        >
+          Content Command
+        </button>
+        <button 
+          onClick={() => { setActiveTab('config'); setSearchQuery(''); }}
+          className={`px-6 py-3.5 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all cursor-pointer ${activeTab === 'config' ? 'bg-white text-black font-black' : 'bg-white/5 text-stardust/40 hover:bg-white/10 hover:text-white'}`}
+        >
+          Global Config
         </button>
         <button 
           onClick={() => { setActiveTab('diagnostics'); setSearchQuery(''); }}
@@ -1283,7 +1299,21 @@ export default function AdminView({
               </div>
 
               {/* Users account lists with direct subscription manipulations */}
-              <div className="lg:col-span-2 bg-black/50 border border-white/10 p-6 md:p-8 rounded-[2rem] shadow-2xl">
+              <div className="lg:col-span-2 space-y-6">
+                {/* Bulk Actions Bar */}
+                <div className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center justify-between gap-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-stardust/40">Collective Operations</p>
+                  <div className="flex gap-2">
+                     <button className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-xl text-[8px] font-black uppercase tracking-widest border border-white/10 transition-all flex items-center gap-1.5">
+                      <FileSpreadsheet className="w-3 h-3" /> Export CSV
+                    </button>
+                    <button className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 rounded-xl text-[8px] font-black uppercase tracking-widest border border-rose-500/20 text-rose-400 transition-all flex items-center gap-1.5">
+                      <Trash2 className="w-3 h-3" /> Purge Inactive
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-black/50 border border-white/10 p-6 md:p-8 rounded-[2rem] shadow-2xl">
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-xs font-black uppercase tracking-widest text-white/50">Active System Accounts Database ({filteredUsersList.length})</h3>
                   <button 
@@ -1395,11 +1425,147 @@ export default function AdminView({
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
 
+          {/* TAB 3: CONTENT COMMAND CENTER */}
+          {activeTab === 'content' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-black/50 border border-white/10 p-8 rounded-[2rem] shadow-2xl flex flex-col justify-between">
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-widest text-emerald-400 mb-6 flex items-center gap-2">
+                    <BookOpen className="w-5 h-5" /> Academy Lesson Manager
+                  </h3>
+                  <div className="space-y-4">
+                    {[
+                      { id: 1, title: 'Quantum Breathwork', category: 'Energy', status: 'Live' },
+                      { id: 2, title: 'Manifestation Masterclass', category: 'Mindset', status: 'Live' },
+                      { id: 3, title: 'Sound Healing 101', category: 'Frequency', status: 'Draft' },
+                      { id: 4, title: 'Digital Detox Protocol', category: 'Focus', status: 'Live' }
+                    ].map(lesson => (
+                      <div key={lesson.id} className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between group">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${lesson.status === 'Live' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                            <Layout className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-black text-white uppercase tracking-wide">{lesson.title}</p>
+                            <p className="text-[9px] text-stardust/30 font-bold uppercase tracking-widest">{lesson.category} • ID: {lesson.id}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                           <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase border ${lesson.status === 'Live' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-amber-500/10 border-amber-500/20 text-amber-400'}`}>
+                            {lesson.status}
+                          </span>
+                          <button className="p-2 opacity-0 group-hover:opacity-100 transition-opacity hover:text-white">
+                            <SettingsIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <button className="w-full py-4 border border-dashed border-white/10 rounded-2xl text-[9px] font-black uppercase tracking-widest text-stardust/30 hover:bg-white/5 hover:text-white transition-all italic">
+                      + Initialize New Lesson Module
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-black/50 border border-white/10 p-8 rounded-[2rem] shadow-2xl">
+                <h3 className="text-xs font-black uppercase tracking-widest text-purple-400 mb-6 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5" /> Global Prompts & Vision
+                </h3>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-[8px] font-black uppercase tracking-widest text-stardust/40 mb-3">Active Onboarding Motto</label>
+                    <textarea 
+                      defaultValue="Elevate your frequency, align your reality."
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white text-xs font-semibold focus:outline-none min-h-[100px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-black uppercase tracking-widest text-stardust/40 mb-3">Daily Inspiration Source</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        defaultValue="https://zenquotes.io/api/today"
+                        className="flex-grow bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white text-xs font-semibold"
+                      />
+                      <button className="px-4 py-2 bg-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white/20 transition-all">Test</button>
+                    </div>
+                  </div>
+                  <button className="w-full py-4 bg-purple-500/20 border border-purple-500/30 text-purple-400 font-black text-[10px] uppercase tracking-widest rounded-2xl hover:bg-purple-500/30 transition-all">
+                    Update Production Variables
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
-          {/* TAB 3: TELEMETRY SYSTEM CONSOLE */}
+          {/* TAB 4: GLOBAL CONFIGURATION */}
+          {activeTab === 'config' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-6">
+                <div className="bg-black/50 border border-white/10 p-8 rounded-[2rem] shadow-2xl">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-amber-400 mb-6 flex items-center gap-2">
+                    <Globe className="w-5 h-5" /> Platform Governance
+                  </h3>
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/10">
+                      <div>
+                        <p className="text-sm font-black text-white uppercase italic">Maintenance Mode</p>
+                        <p className="text-[10px] text-stardust/40 font-bold uppercase tracking-widest mt-1">Restrict public access for internal refactoring</p>
+                      </div>
+                      <button className="w-12 h-6 bg-neutral-800 rounded-full relative p-1 transition-colors">
+                        <div className="w-4 h-4 bg-white/20 rounded-full" />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/10">
+                      <div>
+                        <p className="text-sm font-black text-white uppercase italic">Experimental Hz Engine</p>
+                        <p className="text-[10px] text-stardust/40 font-bold uppercase tracking-widest mt-1">Enable unstable sonic variations for Infinite users</p>
+                      </div>
+                      <button className="w-12 h-6 bg-emerald-500 rounded-full relative p-1 transition-colors flex justify-end">
+                        <div className="w-4 h-4 bg-white rounded-full" />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/10">
+                      <div>
+                        <p className="text-sm font-black text-white uppercase italic">New User XP Multiplier</p>
+                        <p className="text-[10px] text-stardust/40 font-bold uppercase tracking-widest mt-1">Boost initial enrollment engagement</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-emerald-400 font-black text-xl">2.5x</span>
+                        <div className="flex flex-col gap-1">
+                          <button className="p-1.5 hover:text-white transition-colors"><TrendingUp className="w-3 h-3" /></button>
+                          <button className="p-1.5 hover:text-white transition-colors"><TrendingDown className="w-3 h-3" /></button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="bg-black/50 border border-white/10 p-8 rounded-[2rem] shadow-2xl h-fit">
+                   <h3 className="text-xs font-black uppercase tracking-widest text-[#34d399] mb-4 flex items-center gap-2 italic">
+                    <ShieldCheck className="w-4.5 h-4.5" /> Security Hardening
+                  </h3>
+                  <div className="space-y-4">
+                    <p className="text-[10px] text-stardust/40 font-black tracking-widest uppercase">Encryption Status: Quantum Locked</p>
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[9px] font-black text-emerald-400 uppercase tracking-widest text-center">
+                      SSL/TLS 1.3 Active
+                    </div>
+                    <button className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-rose-500/10 hover:text-rose-400 transition-all border-dashed">
+                      Revoke All OAuth Sessions
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: TELEMETRY SYSTEM CONSOLE */}
           {activeTab === 'diagnostics' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               

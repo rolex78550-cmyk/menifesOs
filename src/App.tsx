@@ -15,6 +15,7 @@ import {
   updateDoc, 
   deleteDoc, 
   doc, 
+  getDoc,
   setDoc,
   writeBatch,
   serverTimestamp,
@@ -22,7 +23,8 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db, loginWithGoogle, loginAnonymously, logout, handleFirestoreError, OperationType, testConnection, updateProfile } from './lib/firebase';
+import { auth, db, messaging, loginWithGoogle, loginAnonymously, logout, handleFirestoreError, OperationType, testConnection, updateProfile } from './lib/firebase';
+import { getToken, onMessage } from 'firebase/messaging';
 
 const playDivineSound = () => {
   try {
@@ -114,18 +116,44 @@ const playKachingSound = () => {
   }
 };
 
-const triggerEmailNotification = async (email: string, userName: string | null, ritualName: string) => {
-  if (!email || email.includes('guest')) return;
+const loadRazorpayScript = (): Promise<boolean> => {
+  return new Promise((resolve) => {
+    if ((window as any).Razorpay) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => {
+      console.log("Razorpay script loaded successfully");
+      resolve(true);
+    };
+    script.onerror = (e) => {
+      console.error("Razorpay script failed to load:", e);
+      resolve(false);
+    };
+    document.body.appendChild(script);
+  });
+};
+
+const triggerBroadcastNotification = async (email: string | null, fcmToken: string | null, userName: string | null, ritualName: string) => {
+  if (!email && !fcmToken) return;
   try {
-    const response = await fetch('/api/notify-ritual', {
+    const response = await fetch('/api/broadcast-ritual', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, userName, ritualName })
+      body: JSON.stringify({ 
+        email: email && !email.includes('guest') ? email : null, 
+        fcmToken, 
+        userName, 
+        ritualName 
+      })
     });
     const data = await response.json();
-    console.log("[Vibe OS] Notification dispatched:", data);
+    console.log("[Vibe OS] Broadcast results:", data);
   } catch (error) {
-    console.error("Email notification failed:", error);
+    console.error("Broadcast failed:", error);
   }
 };
 
@@ -184,12 +212,16 @@ import {
   Clock,
   TrendingDown,
   BellRing,
-  Terminal
+  Terminal,
+  CreditCard,
+  Globe,
+  RefreshCcw,
+  Quote
 } from 'lucide-react';
 import { StreakCalendar } from './components/StreakCalendar';
 import AdminView from './components/AdminView';
 import CinematicTour from './components/CinematicTour';
-import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import { SubscriptionLock } from './components/SubscriptionLock';
 import { 
   AreaChart, 
   Area, 
@@ -415,8 +447,8 @@ const HabitMetricsModal = ({ habit, onClose, onSave }: { habit: Habit, onClose: 
   );
 };
 
-const Sidebar = ({ currentView, setView, tier, isMobile, user }: { currentView: View, setView: (v: View) => void, tier: string, isMobile: boolean, user: any }) => {
-  const isAdmin = user?.email === 'asartist20@gmail.com';
+const Sidebar = ({ currentView, setView, tier, isMobile, user, userProfile }: { currentView: View, setView: (v: View) => void, tier: string, isMobile: boolean, user: any, userProfile: any }) => {
+  const isAdmin = user?.email === 'asartist20@gmail.com' || userProfile?.isAdmin === true;
   
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Omni' },
@@ -637,7 +669,8 @@ export default function App() {
     return () => window.removeEventListener('unhandledrejection', handleRejection);
   }, []);
   const [user, setUser] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<{ tier: string, subscriptionExpiry?: any } | null>(null);
+  const [userProfile, setUserProfile] = useState<any | null>(null);
+  const isAdmin = useMemo(() => user?.email === 'asartist20@gmail.com' || userProfile?.isAdmin === true, [user, userProfile]);
   
   // Custom states and hooks for first-time login Walkthrough Tour
   const [showWalkthrough, setShowWalkthrough] = useState(false);
@@ -714,6 +747,52 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [habits, setHabits] = useState<Habit[]>([]);
+  const [fcmToken, setFcmToken] = useState<string | null>(null);
+
+  // FCM Token Registration logic
+  useEffect(() => {
+    if (!user || !messaging) return;
+
+    const setupMessaging = async () => {
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          // If a specific VAPID key is not provided, Firebase might use the default or fail
+          // We try to get it without a fixed placeholder which might be invalid
+          const token = await getToken(messaging).catch(async () => {
+            console.warn("[FCM] getToken failed. Ensure your notifications are enabled.");
+            return null;
+          });
+          
+          if (token) {
+            console.log("[FCM] Token acquired:", token);
+            setFcmToken(token);
+            // Save to Firestore (using setDoc with merge to support guests/new users)
+            await setDoc(doc(db, 'users', user.uid), {
+              fcmToken: token,
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+          }
+        }
+      } catch (err) {
+        console.warn("[FCM] Setup failed:", err);
+      }
+    };
+
+    setupMessaging();
+
+    const unsubscribe = onMessage(messaging, (payload) => {
+      console.log('[FCM] Message received:', payload);
+      setActiveToast({
+        id: `push-${Date.now()}`,
+        title: payload.notification?.title || 'Ritual Broadcast',
+        body: payload.notification?.body || 'New alignment signal received.',
+      });
+      playDivineSound();
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   // 1-Day (24-Hour) trial logic with real-time countdown
   const [currentTime, setCurrentTime] = useState(Date.now());
@@ -747,6 +826,7 @@ export default function App() {
 
   // Check if subscription is still valid or within free trial
   const isTierActive = useMemo(() => {
+    if (isAdmin) return true;
     if (!userProfile) return false;
     if (userProfile.tier !== 'Novice') return true; // Already subscribed or higher tier
 
@@ -769,7 +849,7 @@ export default function App() {
     }
     
     return now < expiryTime;
-  }, [userProfile, timeLeftMs]);
+  }, [userProfile, timeLeftMs, isAdmin]);
 
 
   const activeTier = isTierActive ? (userProfile?.tier || 'Novice') : 'Novice';
@@ -785,6 +865,7 @@ export default function App() {
   const [activeToast, setActiveToast] = useState<{ id: string, title: string, body: string } | null>(null);
 
   useEffect(() => {
+    testConnection();
     if (activeToast) {
       const timer = setTimeout(() => setActiveToast(null), 10000); // 10s visibility
       return () => clearTimeout(timer);
@@ -798,35 +879,45 @@ export default function App() {
       return;
     }
 
+    const syncUser = async () => {
+      try {
+        const response = await fetch('/api/user/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            photoURL: user.photoURL
+          })
+        });
+        const serverProfile = await response.json();
+        setUserProfile(serverProfile);
+      } catch (err) {
+        console.error("Sync failed:", err);
+      }
+    };
+
     if (user.isGuest) {
       const savedProfile = localStorage.getItem('vibe_os_guest_profile');
       if (savedProfile) {
         setUserProfile(JSON.parse(savedProfile));
       } else {
-        const guestProj = { tier: 'Novice' };
+        const guestProj = { tier: 'Novice', isAdmin: false, isSubscribed: false };
         localStorage.setItem('vibe_os_guest_profile', JSON.stringify(guestProj));
         setUserProfile(guestProj);
       }
       return;
     }
 
+    // Initial sync
+    syncUser();
+
+    // Listen for real-time updates as well (for sub changes)
     const unsubscribe = onSnapshot(doc(db, 'users', user.uid), async (snapshot) => {
       if (snapshot.exists()) {
-        setUserProfile(snapshot.data() as { tier: string });
-      } else {
-        // Create profile if it doesn't exist
-        const newProfile = {
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          tier: 'Novice',
-          updatedAt: serverTimestamp()
-        };
-        try {
-          await setDoc(doc(db, 'users', user.uid), newProfile, { merge: true });
-        } catch (e) {
-          handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}`);
-        }
+        const data = snapshot.data();
+        setUserProfile(prev => ({ ...prev, ...data }));
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, `users/${user.uid}`));
 
@@ -1760,16 +1851,16 @@ export default function App() {
               body: `Ritual karne ka time aa gya he, ready ho jao! Time for your ritual "${habit.name}". Align your frequency now.`
             });
             
+            // Broadcast to Email and Push Channels ONLY if Guest (Server handles registered users)
+            if (user?.isGuest) {
+              triggerBroadcastNotification(null, fcmToken, "Guest", habit.name);
+            }
+            
             // Selected customized sound type check
             if (habit.soundType === 'kaching') {
               playKachingSound();
             } else {
               playDivineSound();
-            }
-
-            // Email Notification
-            if (user?.email) {
-              triggerEmailNotification(user.email, user.displayName, habit.name);
             }
 
             // Mobile physical vibrational rhythm config
@@ -1783,11 +1874,12 @@ export default function App() {
           }
         });
         setNotifiedMinute(currentTime);
-      }
-    }, 15000);
+    console.log(`[Vibe OS] Check complete for ${currentTime}. Total habits: ${habits.length}`);
+  }
+}, 15000);
 
-    return () => clearInterval(interval);
-  }, [habits, notifiedMinute, user]);
+return () => clearInterval(interval);
+}, [habits, notifiedMinute, user, fcmToken]);
 
   if (loading) {
     return (
@@ -1984,16 +2076,6 @@ export default function App() {
 
   // View switch logic
   const renderView = () => {
-    if (userProfile?.tier === 'Novice' && timeLeftMs <= 0 && view !== 'pricing' && view !== 'terms' && view !== 'privacy') {
-      return (
-        <LockedTrialView 
-          setView={setView} 
-          logout={handleAppLogout}
-          desires={desires} 
-        />
-      );
-    }
-
     switch (view) {
       case 'dashboard': return (
         <DashboardView 
@@ -2014,24 +2096,25 @@ export default function App() {
         />
       );
       case 'manifest': return <ManifestView desires={desires} addDesire={addDesire} removeDesire={removeDesire} toggleDesire={toggleDesire} isMobile={isMobile} />;
-      case 'habits': return <HabitsView habits={habits} habitLogs={habitLogs} addHabit={addHabit} updateHabit={updateHabit} removeHabit={removeHabit} toggleHabit={toggleHabit} setActiveToast={setActiveToast} diaryEntries={diaryEntries} addDiaryEntry={addDiaryEntry} isMobile={isMobile} tier={activeTier} user={user} />;
+      case 'habits': return <HabitsView habits={habits} habitLogs={habitLogs} addHabit={addHabit} updateHabit={updateHabit} removeHabit={removeHabit} toggleHabit={toggleHabit} setActiveToast={setActiveToast} diaryEntries={diaryEntries} addDiaryEntry={addDiaryEntry} isMobile={isMobile} tier={activeTier} user={user} fcmToken={fcmToken} />;
       case 'vision': return <VisionBoardView items={visionItems} addItem={addVisionItem} removeItem={removeVisionItem} />;
       case 'wealth': return <WealthView transactions={transactions} addTransaction={addTransaction} removeTransaction={removeTransaction} isMobile={isMobile} setView={setView} tier={activeTier} />;
       case 'academy': return <AcademyView tier={activeTier} />;
-      case 'pricing': return <PricingView setView={setView} user={user} tier={activeTier} isMobile={isMobile} updateOfflineProfile={updateOfflineProfile} />;
+      case 'pricing': return <PricingView setView={setView} user={user} tier={activeTier} isMobile={isMobile} updateOfflineProfile={updateOfflineProfile} onToast={setActiveToast} />;
       case 'settings': return (
         <SettingsView 
           setView={setView} 
           user={user} 
           tier={userProfile?.tier || 'Novice'} 
           onToast={setActiveToast} 
+          fcmToken={fcmToken}
           expiry={userProfile?.subscriptionExpiry} 
           onLogout={handleAppLogout} 
           onTriggerWalkthrough={() => setShowWalkthrough(true)}
         />
       );
       case 'admin': 
-        if (user?.email !== 'asartist20@gmail.com') {
+        if (!isAdmin) {
           setView('dashboard');
           return null;
         }
@@ -2063,7 +2146,21 @@ export default function App() {
     <div className="h-screen bg-cosmic-black text-stardust font-sans flex flex-col lg:flex-row relative overflow-hidden gpu">
       <CosmicBackground isMobile={isMobile} />
       
-      <Sidebar currentView={view} setView={setView} tier={userProfile?.tier || 'Novice'} isMobile={isMobile} user={user} />
+      {!isTierActive && !isAdmin && (
+        <SubscriptionLock 
+          onUpgrade={() => setView('pricing')} 
+          isAdmin={isAdmin}
+        />
+      )}
+
+      <Sidebar 
+        currentView={view} 
+        setView={setView} 
+        tier={userProfile?.tier || 'Novice'} 
+        isMobile={isMobile} 
+        user={user} 
+        userProfile={userProfile}
+      />
       
       <AnimatePresence>
         {completingHabitId && (
@@ -2223,7 +2320,7 @@ export default function App() {
   );
 }
 
-const SettingsView = ({ setView, user, tier, onToast, expiry, onLogout, onTriggerWalkthrough }: { setView: (v: View) => void, user: any, tier: string, onToast: (t: any) => void, expiry?: any, onLogout: () => void, onTriggerWalkthrough?: () => void }) => {
+const SettingsView = ({ setView, user, tier, onToast, fcmToken, expiry, onLogout, onTriggerWalkthrough }: { setView: (v: View) => void, user: any, tier: string, onToast: (t: any) => void, fcmToken: string | null, expiry?: any, onLogout: () => void, onTriggerWalkthrough?: () => void }) => {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [isUpdating, setIsUpdating] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -2277,9 +2374,7 @@ const SettingsView = ({ setView, user, tier, onToast, expiry, onLogout, onTrigge
         body: 'Frequency check: Successful. Your divine reminder is ready. Ready ho jao!'
       });
       playDivineSound();
-      if (user?.email) {
-        triggerEmailNotification(user.email, user.displayName, 'Frequency Test Signal');
-      }
+      triggerBroadcastNotification(user?.email || null, fcmToken, user?.displayName || null, 'Frequency Test Signal');
       if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
     } else {
       Notification.requestPermission().then(permission => {
@@ -2294,9 +2389,7 @@ const SettingsView = ({ setView, user, tier, onToast, expiry, onLogout, onTrigge
             body: 'You are now synchronized with the Vibe OS frequency.'
           });
           playDivineSound();
-          if (user?.email) {
-            triggerEmailNotification(user.email, user.displayName, 'System Synchronization');
-          }
+          triggerBroadcastNotification(user?.email || null, fcmToken, user?.displayName || null, 'System Synchronization');
         } else {
           alert("Please enable notifications in browser settings to receive ritual signals.");
         }
@@ -2469,9 +2562,11 @@ const SettingsView = ({ setView, user, tier, onToast, expiry, onLogout, onTrigge
               <ul className="space-y-4 text-xs font-bold text-stardust/40 font-serif active-italic">
                 <li onClick={() => setView('privacy')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest underline decoration-white/10">Privacy Protocol</li>
                 <li onClick={() => setView('terms')} className="hover:text-white cursor-pointer transition-colors uppercase tracking-widest underline decoration-white/10">Terms of Alignment</li>
-                <li onClick={() => setView('admin')} className="hover:text-emerald-400 text-emerald-500 font-sans font-black flex items-center gap-1 cursor-pointer transition-colors uppercase tracking-widest underline decoration-emerald-500/20">
-                  <ShieldCheck className="w-3.5 h-3.5 inline text-emerald-500" /> Admin Control Matrix
-                </li>
+                {user?.email === 'asartist20@gmail.com' && (
+                  <li onClick={() => setView('admin')} className="hover:text-emerald-400 text-emerald-500 font-sans font-black flex items-center gap-1 cursor-pointer transition-colors uppercase tracking-widest underline decoration-emerald-500/20">
+                    <ShieldCheck className="w-3.5 h-3.5 inline text-emerald-500" /> Admin Control Matrix
+                  </li>
+                )}
                 <li className="text-[8px] opacity-20 uppercase tracking-widest">Build ID: VIBE.2.0.26.RESONANCE</li>
               </ul>
             </div>
@@ -2538,7 +2633,7 @@ const PrivacyView = ({ setView }: { setView: (v: View) => void }) => (
       </section>
       <section>
         <h3 className="text-xl font-bold text-white mb-4">3. Third-Party Integrations</h3>
-        <p>Payment processing (Razorpay/PayPal) is handled by external financial nodes. We do not store sensitive credit parameters within our own neural networks.</p>
+        <p>Payment processing (Razorpay) is handled by external financial nodes. We do not store sensitive credit parameters within our own neural networks.</p>
       </section>
       <section>
         <h3 className="text-xl font-bold text-white mb-4">4. Right to Erasure</h3>
@@ -2926,6 +3021,16 @@ const DashboardView = ({
 
   const currentFocus = activeDesires[focusIndex % activeDesires.length] || desires[0];
 
+  const completedRate = habits.length > 0 ? habits.filter(h => h.completed).length / habits.length : 0;
+  const vibrationScore = Math.round(completedRate * 100);
+  
+  const motivation = useMemo(() => {
+    if (vibrationScore >= 80) return "Quantum field stabilized. Reality shift imminent.";
+    if (vibrationScore >= 50) return "Energy mounting. Maintain the frequency.";
+    if (habits.length === 0) return "Initialize rituals to anchor your desires.";
+    return "Resistance detected. Re-align with your core rituals.";
+  }, [vibrationScore, habits.length]);
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 auto-rows-min pb-24 lg:pb-12 max-w-[90rem] mx-auto px-4 lg:px-8 relative z-10">
       {/* Cosmic Transit Monitor */}
@@ -3044,32 +3149,76 @@ const DashboardView = ({
       {/* 2. Sacred Metrics (Visual Habit Tracking) */}
       <SacredMetrics habits={habits} logs={habitLogs} transactions={transactions} isMobile={isMobile} />
 
-      {/* 3. Cosmic Explorer (Pure Video Section) */}
+      {/* 3. Manifestation Alignment Progress */}
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="sm:col-span-1 lg:col-span-1 border border-white/10 bg-black backdrop-blur-xl rounded-[2.5rem] relative overflow-hidden group min-h-[340px] sm:min-h-[400px] shadow-2xl transition-all hover:border-white/30"
+        whileHover={{ y: -5 }}
+        onClick={() => setView('manifest')}
+        className="sm:col-span-1 lg:col-span-1 border border-white/10 bg-black backdrop-blur-xl rounded-[2.5rem] relative overflow-hidden group min-h-[340px] sm:min-h-[400px] shadow-2xl transition-all hover:border-emerald-500/30 flex flex-col cursor-pointer"
       >
-        <video 
-          autoPlay 
-          loop 
-          muted 
-          playsInline 
-          key="focus-bg-video-pure"
-          className="absolute inset-0 w-full h-full object-cover scale-110 group-hover:scale-100 transition-transform duration-[40s] ease-linear"
-        >
-          <source src="https://cdn.pixabay.com/video/2017/12/31/13554-249581057_large.mp4" type="video/mp4" />
-        </video>
+        <div className="absolute inset-0 z-0">
+          <video 
+            autoPlay 
+            loop 
+            muted 
+            playsInline 
+            key="manifest-progress-bg"
+            className="absolute inset-0 w-full h-full object-cover opacity-30 grayscale group-hover:grayscale-0 transition-all duration-700"
+          >
+            <source src="https://cdn.pixabay.com/video/2017/12/31/13554-249581057_large.mp4" type="video/mp4" />
+          </video>
+          <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/40 to-emerald-900/40" />
+        </div>
         
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent pointer-events-none" />
-        
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center z-10">
-          <div className="px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-xl border border-white/10 text-[8px] font-black uppercase tracking-[0.4em] text-white/40 mb-4 italic">
-            Observer Mode
+        <div className="relative z-10 p-8 flex flex-col h-full">
+          <div className="flex justify-between items-start mb-6">
+            <div className="px-3 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-[8px] font-black uppercase tracking-[0.3em] text-emerald-400 italic">
+              Quantum Proximity
+            </div>
+            <Target className="w-5 h-5 text-emerald-400/40 group-hover:text-emerald-400 animate-pulse" />
           </div>
-          <h4 className="text-xl font-black text-white italic uppercase tracking-tighter drop-shadow-2xl">
-            Stellar <br />Navigation
-          </h4>
+
+          <div className="flex-grow flex flex-col justify-center text-center">
+            <div className="mb-6">
+              <span className="text-4xl sm:text-5xl font-black text-white italic tracking-tighter leading-none block">
+                {vibrationScore}%
+              </span>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400 mt-2 block">Alignment Score</span>
+            </div>
+            
+            <p className="text-[9px] font-black uppercase leading-relaxed text-stardust/60 tracking-wider h-10 italic">
+              {motivation}
+            </p>
+          </div>
+
+          <div className="mt-auto space-y-4 pt-4 border-t border-white/5">
+            {activeDesires.slice(0, 2).map((desire, i) => {
+              // Calculate a relative progress for each desire based on habits + some local randomness/pseudo-logic
+              const desireProgress = Math.min(100, Math.floor(vibrationScore * 0.8 + (i * 5)));
+              return (
+                <div key={desire.id} className="space-y-1.5">
+                  <div className="flex justify-between items-end">
+                    <span className="text-[8px] font-black uppercase tracking-widest text-stardust/40 max-w-[80%] truncate italic">{desire.text}</span>
+                    <span className="text-[8px] font-black text-emerald-400">{desireProgress}%</span>
+                  </div>
+                  <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${desireProgress}%` }}
+                      className="h-full bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            {activeDesires.length > 2 && (
+              <p className="text-[7px] font-black uppercase tracking-widest text-center text-white/20">+{activeDesires.length - 2} more manifestations in field</p>
+            )}
+            {activeDesires.length === 0 && (
+              <p className="text-[7px] font-black uppercase tracking-widest text-center text-white/20 italic">No active desires detected.</p>
+            )}
+          </div>
         </div>
       </motion.div>
 
@@ -3948,7 +4097,8 @@ const HabitsView = ({
   addDiaryEntry,
   isMobile,
   tier,
-  user
+  user,
+  fcmToken
 }: { 
   habits: Habit[], 
   habitLogs: HabitLog[],
@@ -3961,7 +4111,8 @@ const HabitsView = ({
   addDiaryEntry: (c: string, m: 'free' | '369' | '555') => void,
   isMobile: boolean,
   tier: string,
-  user: any
+  user: any,
+  fcmToken: string | null
 }) => {
   const [tab, setTab] = useState<'rituals' | 'diary'>('rituals');
   const [isAdding, setIsAdding] = useState(false);
@@ -4122,10 +4273,8 @@ const HabitsView = ({
                                           title: 'Matrix Synchronized',
                                           body: 'Browser notifications are now active. Frequency sound will play during triggers.'
                                         });
-                                        // Optional: trigger a test email if user has a real email
-                                        if (user?.email && !user.isGuest) {
-                                          triggerEmailNotification(user.email, user.displayName, "Test Ritual Connection");
-                                        }
+                                        // Optional: trigger a test broadcast if user has a real profile
+                                        triggerBroadcastNotification(user?.email || null, fcmToken || null, user?.displayName || null, "Universal Connection Test");
                                       }
                                     });
                                   }
@@ -4894,22 +5043,40 @@ const LockedTrialView = ({ setView, logout, desires }: LockedTrialViewProps) => 
   );
 };
 
-const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { setView: (v: View) => void, user: any, tier: string, isMobile: boolean, updateOfflineProfile?: (tierName: string, expiryDate?: Date) => void }) => {
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'lifetime'>('monthly');
-  const [isIndianUser, setIsIndianUser] = useState<boolean>(() => {
-    // Initial heuristic detection
-    try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const lang = navigator.language || (navigator as any).userLanguage;
-      return tz === 'Asia/Kolkata' || lang.includes('IN') || lang.includes('hi');
-    } catch (e) {
-      return false;
-    }
-  });
-  
+const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile, onToast }: { setView: (v: View) => void, user: any, tier: string, isMobile: boolean, updateOfflineProfile?: (tierName: string, expiryDate?: Date) => void, onToast?: (toast: any) => void }) => {
   useEffect(() => {
-    // Fetch precise location for better accuracy
+    window.scrollTo(0, 0);
+    const main = document.querySelector('main');
+    if (main) main.scrollTop = 0;
+  }, []);
+
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'lifetime'>('yearly');
+  const [isIndianUser, setIsIndianUser] = useState<boolean>(true);
+  
+  // Custom High-Fidelity Checkout Modal States
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [selectedPlanForCheckout, setSelectedPlanForCheckout] = useState<any>(null);
+  const [checkoutStep, setCheckoutStep] = useState<'details' | 'processing' | 'success' | 'error'>('details');
+  const [checkoutProgress, setCheckoutProgress] = useState(0);
+  const [checkoutMessage, setCheckoutMessage] = useState('');
+  const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>(null);
+  const [isLoadingKey, setIsLoadingKey] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/config/razorpay-key')
+      .then(res => res.json())
+      .then(data => {
+        setRazorpayKeyId(data.keyId);
+        setIsLoadingKey(false);
+      })
+      .catch(() => {
+        setRazorpayKeyId(null);
+        setIsLoadingKey(false);
+      });
+  }, []);
+
+  useEffect(() => {
     fetch('https://ipapi.co/json/')
       .then(res => res.json())
       .then(data => {
@@ -4924,31 +5091,41 @@ const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { 
       });
   }, []);
 
-  const currencySymbol = isIndianUser ? '₹' : '$';
+  useEffect(() => {
+    // Handle redirection success from Payment Link
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('success') === 'true' && user && !user.isGuest) {
+       // Refresh user data or show success
+       const checkUpgrade = async () => {
+         try {
+           const userDoc = await getDoc(doc(db, 'users', user.uid));
+           if (userDoc.exists()) {
+             const data = userDoc.data();
+             if (data.tier && data.tier !== 'Novice') {
+               // Success!
+               if (onToast) {
+                 onToast({
+                    id: 'upgrade-success',
+                    title: 'Ascension Complete',
+                    body: `Your vibrational match to ${data.tier} has been established.`
+                 });
+               }
+             }
+           }
+         } catch (e) {}
+       };
+       checkUpgrade();
+    }
+  }, [user, db, onToast]);
 
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      if ((window as any).Razorpay) {
-        resolve(true);
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => {
-        console.error("Razorpay SDK could not be loaded.");
-        resolve(false);
-      };
-      document.body.appendChild(script);
-    });
-  };
+  const currencySymbol = isIndianUser ? '₹' : '$';
 
   const getInrPrice = (planName: string) => {
     if (planName === 'Novice') return 0;
     if (planName === 'Sovereign') {
       if (billingCycle === 'monthly') return 99;
       if (billingCycle === 'yearly') return 799;
-      return 1999;
+      if (billingCycle === 'lifetime') return 1999;
     }
     return 0;
   };
@@ -4958,100 +5135,153 @@ const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { 
     if (planName === 'Sovereign') {
       if (billingCycle === 'monthly') return '5.00';
       if (billingCycle === 'yearly') return '49.00';
-      return '149.00';
+      if (billingCycle === 'lifetime') return '149.00';
     }
     return '0';
   };
 
-
   const getPrice = (planName: string) => {
+    if (planName === 'Novice') return '0';
     return isIndianUser ? getInrPrice(planName).toString() : getUsdPrice(planName);
   };
 
-  const handleRazorpayPayment = async (plan: any) => {
+  const isAdmin = user?.email === 'asartist20@gmail.com';
+
+  const executePayment = async () => {
     if (!user) {
-      alert("Please sign in to upgrade your frequency.");
+      setCheckoutStep('error');
+      setCheckoutMessage("Please sign in first to upgrade your frequency.");
       return;
     }
 
-    const res = await loadRazorpayScript();
-
-    if (!res) {
-      alert("Razorpay SDK failed to load. Are you online?");
-      return;
-    }
-
-    // Try multiple possible environment variable names
-    const rzpKey = 
-      import.meta.env.VITE_RAZORPAY_KEY_ID || 
-      import.meta.env.VITE_RAZORPAY_KEY ||
-      import.meta.env.VITE_RAZORPAY_ID;
-
-    if (!rzpKey || rzpKey === "your_razorpay_key_id_here") {
-      alert("CRITICAL: Razorpay Key ID is missing in the frontend. \n\nIMPORTANT: You must add a variable named 'VITE_RAZORPAY_KEY_ID' (must start with VITE_) in Settings -> Environment Variables so the payment window can see it.");
-      return;
-    }
-
-    const inrAmount = getInrPrice(plan.name);
+    setCheckoutStep('processing');
+    setCheckoutProgress(15);
+    setCheckoutMessage('Initializing secure gateway tunnel...');
 
     try {
-      const response = await fetch("/api/razorpay/create-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: inrAmount,
-          currency: "INR",
-          receipt: `receipt_${plan.name.toLowerCase()}`
-        }),
-      });
+      // ADMIN BYPASS
+      if (isAdmin) {
+        setCheckoutProgress(50);
+        setCheckoutMessage('Admin authority detected. Bypassing gateway...');
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        const expiry = new Date();
+        expiry.setFullYear(expiry.getFullYear() + 100);
 
-      const orderData = await response.json();
-
-      if (orderData.error) {
-        let msg = orderData.error;
-        if (orderData.details) msg += `\n\nDetails: ${orderData.details}`;
-        if (orderData.debug_id_prefix) msg += `\n\nID Check: ${orderData.debug_id_prefix} (Length: ${orderData.debug_id_len})`;
-        alert(msg);
+        if (!user.isGuest) {
+          await updateDoc(doc(db, 'users', user.uid), {
+            tier: selectedPlanForCheckout.name,
+            subscriptionExpiry: Timestamp.fromDate(expiry),
+            updatedAt: serverTimestamp()
+          });
+        }
+        
+        setCheckoutProgress(100);
+        setCheckoutStep('success');
+        confetti();
+        playKachingSound();
         return;
       }
 
+      // Fetch public key ID from safe backend endpoint
+      const keyRes = await fetch('/api/config/razorpay-key');
+      const keyData = await keyRes.json();
+      const razorpayKeyIdFromApi = keyData.keyId;
+
+      if (!razorpayKeyIdFromApi) {
+        throw new Error("Razorpay API Key is missing on the server. Please add RAZORPAY_KEY_ID to Environment Variables in Settings.");
+      }
+
+      setCheckoutProgress(30);
+      setCheckoutMessage('Loading secure payment gateway script...');
+      
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        throw new Error("Failed to load Razorpay dynamic payment client. Check network connection.");
+      }
+
+      setCheckoutProgress(45);
+      setCheckoutMessage('Opening order port with Razorpay API...');
+
+      const inrAmount = getInrPrice(selectedPlanForCheckout.name);
+      const orderRes = await fetch('/api/razorpay/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: inrAmount,
+          currency: 'INR',
+          receipt: `rcpt_${user.uid.slice(-10)}_${Date.now().toString().slice(-10)}`,
+          planName: selectedPlanForCheckout.name,
+          billingCycle: billingCycle,
+          userId: user.uid,
+          userEmail: user.email,
+          userName: user.displayName,
+          useLink: false 
+        })
+      });
+
+      if (!orderRes.ok) {
+        const errData = await orderRes.json();
+        console.error("Order Error Body:", errData);
+        throw new Error(errData.details || errData.error || "Alignment port failed to sync order token.");
+      }
+
+      const rzpOrder = await orderRes.json();
+      
+      if (rzpOrder.paymentLinkUrl) {
+        setCheckoutProgress(100);
+        setCheckoutMessage('Redirecting to secure abundance portal...');
+        window.location.href = rzpOrder.paymentLinkUrl;
+        return;
+      }
+
+      setCheckoutProgress(60);
+      setCheckoutMessage('Awaiting alignment in secure checkout popup...');
+
       const options = {
-        key: rzpKey,
-        amount: orderData.amount,
-        currency: orderData.currency,
-        name: "Vibe OS",
-        description: `${plan.name} (${billingCycle}) Tier Manifestation`,
-        order_id: orderData.id,
-        handler: async function (response: any) {
-          setIsVerifying(true);
+        key: razorpayKeyIdFromApi,
+        amount: rzpOrder.amount,
+        currency: rzpOrder.currency,
+        name: "VIBE OS",
+        description: `${selectedPlanForCheckout.name} [${billingCycle}] Activation`,
+        image: "https://ais-dev-j7sihoqk5j4nphix4bieyo-51389356776.asia-southeast1.run.app/vite.svg", 
+        order_id: rzpOrder.id,
+        handler: async (response: any) => {
           try {
-            const verifyRes = await fetch("/api/razorpay/verify-payment", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
+            setCheckoutStep('processing');
+            setCheckoutProgress(75);
+            setCheckoutMessage('Verifying digital signature...');
+
+            const verifyRes = await fetch('/api/razorpay/verify-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                userId: user.uid,
-                tier: plan.name
-              }),
+                razorpay_signature: response.razorpay_signature
+              })
             });
-            const verifyData = await verifyRes.json();
-            if (verifyData.status === "ok") {
-              const expiry = new Date();
-              if (billingCycle === 'monthly') expiry.setMonth(expiry.getMonth() + 1);
-              else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
-              else expiry.setFullYear(expiry.getFullYear() + 100); 
 
-              if (user.isGuest) {
-                updateOfflineProfile(plan.name, expiry);
-                alert(`Payment Verified! Your frequency has ascended to ${plan.name}.`);
-                setView('dashboard');
-                return;
+            if (!verifyRes.ok) {
+              const verifyErr = await verifyRes.json();
+              throw new Error(verifyErr.message || "Signature verification failed.");
+            }
+
+            setCheckoutProgress(95);
+            setCheckoutMessage('Sealing stardust ledger...');
+
+            const expiry = new Date();
+            if (billingCycle === 'monthly') expiry.setMonth(expiry.getMonth() + 1);
+            else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
+            else expiry.setFullYear(expiry.getFullYear() + 100);
+
+            if (user.isGuest) {
+              if (updateOfflineProfile) {
+                updateOfflineProfile(selectedPlanForCheckout.name, expiry);
               }
-
+            } else {
               await updateDoc(doc(db, 'users', user.uid), {
-                tier: plan.name,
+                tier: selectedPlanForCheckout.name,
                 subscriptionExpiry: Timestamp.fromDate(expiry),
                 updatedAt: serverTimestamp()
               });
@@ -5059,104 +5289,68 @@ const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { 
               try {
                 await addDoc(collection(db, 'transactions'), {
                   type: 'income',
-                  amount: Number(plan.price) || 0,
+                  amount: inrAmount,
                   label: user.displayName || user.email || 'Vibe Seeker',
-                  category: `${plan.name} Sub (${billingCycle})`,
+                  category: `${selectedPlanForCheckout.name} Activation [${billingCycle}]`,
                   ownerId: user.uid,
                   timestamp: serverTimestamp()
                 });
               } catch (txErr) {
-                console.error("Error creating transition invoice:", txErr);
+                console.error("Error logging transaction:", txErr);
               }
-              
-              alert(`Payment Verified! Your frequency has ascended to ${plan.name}.`);
-              setView('dashboard');
-            } else {
-              alert("Payment verification failed. Please contact support.");
             }
-          } catch (e) {
-            console.error("Verification error:", e);
-          } finally {
-            setIsVerifying(false);
+
+            try {
+              confetti();
+              playKachingSound();
+            } catch (e) {}
+
+            setCheckoutProgress(100);
+            setCheckoutStep('success');
+
+          } catch (hErr: any) {
+            console.error(hErr);
+            setCheckoutStep('error');
+            setCheckoutMessage(hErr.message || "Failed during payment verification.");
           }
         },
         prefill: {
-          name: user.displayName || "Seeker",
-          email: user.email || "seeker@vibe-os.com",
+          name: user.displayName || "Manifestor",
+          email: user.email || "",
+        },
+        notes: {
+          userId: user.uid,
+          tier: selectedPlanForCheckout.name,
+          billingCycle: billingCycle
         },
         theme: {
-          color: "#000000",
+          color: "#3371FF",
         },
         modal: {
-          ondismiss: function() {
-            console.log("Razorpay modal closed by user or automatically.");
+          ondismiss: () => {
+            setCheckoutStep('details');
+            if (onToast) {
+              onToast({
+                id: `dismissed-${Date.now()}`,
+                title: "Gateway Portal Disengaged",
+                body: "Checkout aborted by user. Alignment remains unchanged."
+              });
+            }
           }
         }
       };
 
-      const paymentObject = new (window as any).Razorpay(options);
-      
-      paymentObject.on('payment.failed', function (response: any) {
-        console.error("Payment failed reason:", response.error.reason);
-        console.error("Payment failed description:", response.error.description);
-        alert(`Payment failed: ${response.error.description}`);
+      const razorpayInstance = new (window as any).Razorpay(options);
+      razorpayInstance.on('payment.failed', function (response: any) {
+        console.error("Razorpay Payment Failed:", response.error);
+        setCheckoutStep('error');
+        setCheckoutMessage(`Gateway Error: ${response.error.description}`);
       });
-
-      paymentObject.open();
-    } catch (e) {
-      console.error("Payment error:", e);
-      alert("Failed to initialize payment.");
-    }
-  };
-
-  const handleSimulateUpgrade = async (plan: any) => {
-    if (!user) {
-      alert("Please sign in to upgrade your frequency.");
-      return;
-    }
-    
-    if (!confirm(`PROTOTYPE MODE: This will simulate a payment for the ${plan.name} tier. Proceed with manifestation?`)) return;
-
-    setIsVerifying(true);
-    try {
-      const expiry = new Date();
-      if (billingCycle === 'monthly') expiry.setMonth(expiry.getMonth() + 1);
-      else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
-      else expiry.setFullYear(expiry.getFullYear() + 100);
-
-      if (user.isGuest) {
-        updateOfflineProfile(plan.name, expiry);
-        alert(`Simulation Successful! Your frequency has ascended to ${plan.name} (Local Preview Mode).`);
-        setView('dashboard');
-        return;
-      }
-
-      await updateDoc(doc(db, 'users', user.uid), {
-        tier: plan.name,
-        subscriptionExpiry: Timestamp.fromDate(expiry),
-        updatedAt: serverTimestamp()
-      });
-      
-      try {
-        await addDoc(collection(db, 'transactions'), {
-          type: 'income',
-          amount: Number(plan.price) || 0,
-          label: user.displayName || user.email || 'Vibe Seeker',
-          category: `${plan.name} Sub (${billingCycle})`,
-          ownerId: user.uid,
-          timestamp: serverTimestamp()
-        });
-      } catch (txErr) {
-        console.error("Error creating transition invoice:", txErr);
-      }
-
-      alert(`Simulation Successful! Your frequency has ascended to ${plan.name} (Preview Mode).`);
-      setView('dashboard');
-    } catch (e) {
-      console.error(e);
-      alert("Simulation failed.");
-    } finally {
-      setIsVerifying(false);
+      razorpayInstance.open();
+    } catch (err: any) {
+      console.error(err);
+      setCheckoutStep('error');
+      setCheckoutMessage(err.message || 'Sub-frequency transaction failure. Please retry.');
     }
   };
 
@@ -5184,439 +5378,435 @@ const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile }: { 
   ];
 
 
-  const isPayPalConfigured = import.meta.env.VITE_PAYPAL_CLIENT_ID && 
-                             import.meta.env.VITE_PAYPAL_CLIENT_ID !== "your_paypal_client_id_here" &&
-                             import.meta.env.VITE_PAYPAL_CLIENT_ID !== "sb";
-
-  const pricingContent = (
-    <div className="max-w-6xl mx-auto px-4 lg:px-0 pb-16">
-      <div className="mb-8 text-center max-w-2xl mx-auto">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black uppercase tracking-[0.4em] text-emerald-400 mb-4 italic">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-          Limited Manifestation Window Open
-        </div>
-        
-        <h2 className="text-3xl lg:text-5xl font-black tracking-tighter mb-4 text-white drop-shadow-2xl uppercase italic leading-tight">
-          Ascend Your <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-white to-emerald-400">Abundance.</span>
-        </h2>
-        
-        <p className="text-stardust/40 text-[9px] lg:text-[10px] font-bold leading-relaxed uppercase tracking-[0.2em] mb-6 italic">
-          Join 8,400+ souls already operating at the universal frequency.
-        </p>
-
-        <div className="flex flex-col items-center gap-3">
-           <div className="bg-black/60 p-1 rounded-[1.5rem] flex border border-white/10 shadow-2xl backdrop-blur-xl">
-              {[
-                { id: 'monthly', label: 'Monthly' },
-                { id: 'yearly', label: 'Yearly', best: true },
-                { id: 'lifetime', label: 'Lifetime' }
-              ].map((cycle) => (
-                <button
-                  key={cycle.id}
-                  onClick={() => setBillingCycle(cycle.id as any)}
-                  className={`relative px-4 py-2 rounded-[1.1rem] text-[9px] font-black uppercase tracking-widest transition-all overflow-hidden ${billingCycle === cycle.id ? 'bg-emerald-500/20 text-white shadow-2xl' : 'text-stardust/40 hover:text-white'}`}
-                >
-                  {cycle.label}
-                  {cycle.best && cycle.id !== billingCycle && (
-                    <div className="absolute top-0 right-0 px-1.5 py-0.5 bg-emerald-500 text-white text-[5px] font-black italic">Value</div>
-                  )}
-                </button>
-              ))}
-           </div>
-           
-           <div className="flex items-center gap-4">
-             <div className="flex items-center gap-1.5">
-               <ShieldCheck className="w-3 h-3 text-emerald-500" />
-               <span className="text-[8px] font-black uppercase tracking-widest text-stardust/20">Secure Encryption</span>
-             </div>
-             <div className="w-1 h-1 rounded-full bg-white/10" />
-             <div className="flex items-center gap-1.5">
-               <Zap className="w-3 h-3 text-amber-500" />
-               <span className="text-[8px] font-black uppercase tracking-widest text-stardust/20">Instant Activation</span>
-             </div>
-           </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch mb-12 px-2 sm:px-0">
-        {plans.map((plan, i) => {
-          let effectivePrice = plan.price;
-          let savings = 0;
-          if (billingCycle === 'yearly') {
-            effectivePrice = (parseFloat(plan.price) / 12).toFixed(2);
-            savings = 50;
-          } else if (billingCycle === 'lifetime') {
-            effectivePrice = (parseFloat(plan.price) / 24).toFixed(2); // Estimated 2 years value
-            savings = 70;
-          }
-
-          return (
-          <motion.div
-            key={plan.name}
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className={`relative p-5 sm:p-6 rounded-[2rem] border backdrop-blur-3xl flex flex-col justify-between group transition-all duration-700 hover:scale-[1.01] shadow-2xl overflow-visible ${
-              plan.recommended 
-                ? 'bg-black/90 border-emerald-500/40 shadow-emerald-500/10' 
-                : 'bg-black/40 border-white/10 hover:border-white/30'
-            }`}
-          >
-            {plan.recommended && (
-              <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-transparent via-emerald-500/60 to-transparent pointer-events-none" />
-            )}
-            
-            {plan.recommended && (
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-emerald-500 text-white px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-[0.4em] shadow-[0_15px_40px_rgba(16,185,129,0.5)] z-20 whitespace-nowrap italic border border-white/20">
-                Resonant Preferred
-              </div>
-            )}
-
-            {savings > 0 && plan.name !== 'Novice' && (
-              <div className="absolute top-4 right-4 px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[8px] font-black uppercase italic tracking-widest z-10">
-                Save {savings}%
-              </div>
-            )}
-
-            <div>
-              <div className="mb-5">
-                <h4 className={`text-[10px] sm:text-[11px] font-black uppercase tracking-[0.4em] mb-3 italic ${plan.recommended ? 'text-emerald-400' : 'text-stardust/40'}`}>
-                  {plan.name}
-                </h4>
-                <div className="flex flex-col">
-                  <div className="flex items-baseline gap-1 flex-wrap">
-                    <span className="text-3xl sm:text-4xl font-black text-white italic tracking-tighter">{currencySymbol}{plan.price}</span>
-                    <span className="text-stardust/20 font-bold text-[9px] uppercase tracking-widest">
-                       {billingCycle === 'monthly' ? '/ mo' : billingCycle === 'yearly' ? '/ yr' : 'once'}
-                    </span>
-                  </div>
-                  {billingCycle !== 'monthly' && plan.name !== 'Novice' && (
-                    <div className="mt-1 flex items-center gap-2">
-                       <span className="text-[11px] sm:text-[12px] font-black text-emerald-400 italic">{currencySymbol}{effectivePrice}</span>
-                       <span className="text-[7px] font-black uppercase tracking-widest text-stardust/30">Effective per month</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <p className="text-stardust/60 text-[10px] sm:text-[11px] font-bold mb-5 leading-relaxed uppercase tracking-wider italic">
-                {plan.description}
-              </p>
-
-              <div className="space-y-2.5 mb-6">
-                {plan.features.map(feature => (
-                  <div key={feature} className="flex items-center gap-3 text-[10px] sm:text-[10.5px] font-black text-white/70 uppercase tracking-widest group-hover:text-white transition-colors">
-                    <div className={`w-3.5 h-3.5 sm:w-4 h-4 rounded-lg flex items-center justify-center border shrink-0 transition-all ${plan.recommended ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/5 border-white/10'}`}>
-                      <Check className={`w-2 h-2 sm:w-2.5 h-2.5 ${plan.recommended ? 'text-emerald-400' : 'text-stardust/40'}`} />
-                    </div>
-                    {feature}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {plan.isPremium ? (
-              <div className="relative z-10 space-y-3">
-                {tier === plan.name ? (
-                   <div className="w-full py-3.5 rounded-[1.2rem] font-black uppercase text-[9px] tracking-[0.3em] bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 flex items-center justify-center gap-2 italic">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Vibrational Match
-                    </div>
-                ) : (
-                  <>
-                    <motion.button
-                      whileHover={{ scale: 1.02, boxShadow: '0 15px 30px rgba(16,185,129,0.3)' }}
-                      whileTap={{ scale: 0.98 }}
-                      disabled={isVerifying}
-                      onClick={() => {
-                        const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
-                        const isConfigured = rzpKey && rzpKey !== "your_razorpay_key_id_here";
-                        
-                        // Default to Razorpay for Indian users if configured, else simulation or paypal if needed
-                        if (isIndianUser && isConfigured) {
-                          handleRazorpayPayment(plan);
-                        } else {
-                          // For non-Indian users or if Razorpay isn't set up, we currently use simulation
-                          // (In a real production app, we'd trigger PayPal here for USD)
-                          handleSimulateUpgrade(plan);
-                        }
-                      }}
-                      className={`w-full py-3.5 rounded-[1.2rem] font-black uppercase text-[9px] tracking-[0.3em] transition-all shadow-2xl border border-white/10 flex items-center justify-center gap-2.5 italic ${
-                        plan.recommended 
-                          ? 'bg-emerald-500 text-white shadow-emerald-500/20 hover:bg-emerald-400' 
-                          : 'bg-white text-black hover:bg-stardust'
-                      }`}
-                    >
-                      {isVerifying ? (
-                        <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <Zap className="w-3.5 h-3.5" />
-                          Claim Mastery
-                        </>
-                      )}
-                    </motion.button>
-                    
-                    <div className="flex items-center justify-center gap-4 py-1">
-                       <span className="text-[7px] font-black uppercase tracking-[0.3em] text-[10px] text-stardust/20 italic">Risk Free • No Questions • Divine Aligned</span>
-                    </div>
-
-                    <div className="paypal-button-container opacity-60 hover:opacity-100 transition-opacity">
-                      {isPayPalConfigured && billingCycle !== 'lifetime' ? (
-                        <PayPalButtons 
-                          style={{ height: 36, layout: "vertical", shape: "pill", label: "subscribe", color: "white" }}
-                          createSubscription={(data, actions) => {
-                            return actions.subscription.create({
-                              plan_id: plan.planId!
-                            });
-                          }}
-                          onApprove={async (data, actions) => {
-                            if (user) {
-                               if (user.isGuest) {
-                                 updateOfflineProfile(plan.name);
-                                 alert(`Divine Agreement Signed! Frequency ascending.`);
-                                 setView('dashboard');
-                                 return;
-                               }
-                               const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore');
-                               await updateDoc(doc(db, 'users', user.uid), {
-                                 tier: plan.name,
-                                 updatedAt: serverTimestamp()
-                               });
-
-                               try {
-                                 await addDoc(collection(db, 'transactions'), {
-                                   type: 'income',
-                                   amount: Number(plan.price) || 0,
-                                   label: user.displayName || user.email || 'Vibe Seeker',
-                                   category: `${plan.name} Sub (${billingCycle})`,
-                                   ownerId: user.uid,
-                                   timestamp: serverTimestamp()
-                                 });
-                               } catch (txErr) {
-                                 console.error("Error creating PayPal transition invoice:", txErr);
-                               }
-
-                               alert(`Divine Agreement Signed! Frequency ascending.`);
-                               setView('dashboard');
-                            }
-                          }}
-                          onError={(err) => {
-                            console.error("PayPal Error:", err);
-                            alert("Vibrational interference with PayPal. Check credentials.");
-                          }}
-                        />
-                      ) : null}
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="py-3.5 rounded-[1.2rem] border border-white/10 flex items-center justify-center text-stardust/20 text-[9px] font-black uppercase tracking-[0.3em] italic text-center relative z-10">
-                Current Frequency
-              </div>
-            )}
-
-            <div className="absolute inset-0 rounded-[2rem] overflow-hidden pointer-events-none z-0">
-              <div className={`absolute -right-20 -bottom-20 w-64 h-64 rounded-full blur-[120px] opacity-10 pointer-events-none group-hover:opacity-30 transition-opacity duration-1000 ${
-                plan.recommended ? 'bg-emerald-500' : 'bg-white'
-              }`} />
-            </div>
-          </motion.div>
-        )})}
-      </div>
-
-      {/* Seeker Testimony & Manifestation Proof */}
-      <div className="my-20">
-        <div className="mb-10 text-center max-w-xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black uppercase tracking-[0.4em] text-emerald-400 mb-4 italic">
-            <Star className="w-2 h-2 text-emerald-400 fill-current animate-spin" />
-            Verified Quantum Success
+    const pricingContent = (
+    <div className="h-full overflow-y-auto overflow-x-hidden no-scrollbar pb-24 lg:pb-32">
+      {/* Primary Conversion Layer - Optimized for At-a-Glance Visibility */}
+      <div className="max-w-5xl mx-auto px-4 lg:px-0 pt-4 flex flex-col gap-3 min-h-[90vh] justify-center">
+        <div className="text-center space-y-2">
+          <div className="flex items-center justify-center gap-1.5 mb-2">
+            {[...Array(5)].map((_, i) => (
+              <Star key={i} className="w-3 h-3 fill-emerald-500 text-emerald-500" />
+            ))}
+            <span className="text-[8px] font-black text-emerald-400 uppercase tracking-[0.2em] ml-2">Verified by 12,400+ Performers</span>
           </div>
-          <h3 className="text-2xl sm:text-4xl font-black italic tracking-tighter text-white uppercase mb-3">
-            Vibrational <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-white">Evidence.</span>
-          </h3>
-          <p className="text-stardust/40 text-[9px] sm:text-[10px] font-bold leading-relaxed uppercase tracking-[0.2em] italic">
-            Hear from souls who shifted their reality by investing in their infinite timeline.
+          <h2 className="text-3xl lg:text-4xl font-black tracking-tighter text-white uppercase italic leading-none">
+            Master Your <span className="text-emerald-400 underline decoration-emerald-500/30 underline-offset-8">Evolution.</span>
+          </h2>
+          <p className="text-stardust/30 text-[9px] font-bold uppercase tracking-[0.4em] italic pt-2">
+            Quantum Synchronization Level Activated
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-2 sm:px-0">
-          {[
-            {
-              name: "Aarav Mehta",
-              location: "Bengaluru, India",
-              role: "Quantum Seeker & Dev",
-              manifestation: "Senior Tech Lead & Remote Silicon Valley Offer",
-              quote: "The visual scripting workspace and keeping the 528Hz DNA Repair track playing in the background completely rewired my morning routine. By structuring my core desires here every single morning instead of doomscrolling, my brain-fog vanished. Within three weeks, a Silicon Valley agency connected with me for the exact role I was planning inside my dashboard.",
-              rating: 5,
-              delay: 0.1
-            },
-            {
-              name: "Elena Rostova",
-              location: "Munich, Germany",
-              role: "Holistic Yoga Guide",
-              manifestation: "Bali Spiritual Retreat ($18,000 fully funded)",
-              quote: "This space acts like a clear lens for the mind. Writing down my daily gratitude logs and aligning them with the sub-quantum blueprint features helped me overcome a deep-seated scarcity mindset. I literally mapped out every detail of my retreat layout here. A week later, a private client stepped up to fully sponsor our main venue deposit!",
-              rating: 5,
-              delay: 0.2
-            },
-            {
-              name: "Marcus Vance",
-              location: "Brooklyn, NY",
-              role: "Creator & Visual Director",
-              manifestation: "$12K Creative Agency Retainer",
-              quote: "Most manifestation apps feel incredibly superficial. The sheer sensory immersion of Vibe OS—the sound frequencies, the space graphics, and the strict habit trackers—keeps me intensely focused. It built the daily discipline I needed to pitch my studio confidently, and we locked in our biggest project retainer to date.",
-              rating: 5,
-              delay: 0.3
-            },
-            {
-              name: "Priya Sharma",
-              location: "Mumbai, India",
-              role: "Creative Architect",
-              manifestation: "Dream 2BHK Home Booking",
-              quote: "Having a single sacred digital space to project my desires daily acts as a massive anchor for my thoughts. Instead of just dreaming about my future home, the wealth tracking and visual reminder logs made the goal tangible for my subconscious. Last week, I finalized my first apartment booking in Mumbai!",
-              rating: 5,
-              delay: 0.4
-            }
-          ].map((testimonial, idx) => (
-            <motion.div
-              key={idx}
-              initial={{ opacity: 0, y: 25 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: testimonial.delay, duration: 0.6 }}
-              className="relative p-6 sm:p-8 rounded-[2rem] border border-white/5 bg-black/40 backdrop-blur-3xl flex flex-col justify-between group overflow-hidden hover:border-emerald-500/20 transition-all duration-500"
-            >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/[0.02] blur-3xl rounded-full" />
-              
-              <div>
-                {/* Rating Stars */}
-                <div className="flex gap-1 mb-4">
-                  {[...Array(testimonial.rating)].map((_, i) => (
-                    <Star key={i} className="w-3.5 h-3.5 text-amber-400 fill-current" />
+        {/* Dynamic Trust Infrastructure */}
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-2 mb-2">
+          <div className="flex bg-white/[0.03] p-1.5 rounded-2xl border border-white/10 shadow-inner backdrop-blur-xl">
+             {[
+               { id: 'monthly', label: 'Monthly' },
+               { id: 'yearly', label: 'Yearly' },
+               { id: 'lifetime', label: 'Lifetime' }
+             ].map((cycle) => (
+               <button
+                 key={cycle.id}
+                 onClick={() => setBillingCycle(cycle.id as any)}
+                 className={`relative px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-500 ${billingCycle === cycle.id ? 'bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)]' : 'text-stardust/40 hover:text-white'}`}
+               >
+                 {cycle.label}
+                 {cycle.id === 'yearly' && billingCycle !== cycle.id && <span className="absolute -top-1.5 -right-1 px-2 py-0.5 bg-emerald-500 text-black text-[6px] font-black rounded-full border border-emerald-500 shadow-lg">SAVE 30%</span>}
+               </button>
+             ))}
+          </div>
+
+        </div>
+
+        {/* Primary Pricing Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {plans.sort((a, b) => (a.recommended ? -1 : 1)).map((plan, i) => {
+            const isRecommended = plan.recommended;
+            return (
+              <motion.div
+                key={plan.name}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: i * 0.1 }}
+                className={`relative p-8 rounded-[2.5rem] border flex flex-col group transition-all duration-700 ${
+                  isRecommended 
+                    ? 'bg-emerald-500/[0.03] border-emerald-500/50 shadow-[0_0_80px_rgba(16,185,129,0.08)]' 
+                    : 'bg-white/[0.01] border-white/10'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className={`text-lg font-black uppercase italic tracking-tighter ${isRecommended ? 'text-emerald-400' : 'text-white'}`}>
+                    {plan.name} Pathway
+                  </h3>
+                  {isRecommended && (
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500 text-black text-[7px] font-black uppercase tracking-[0.2em] italic shadow-emerald-400/20 shadow-lg">
+                      <Zap className="w-3 h-3 fill-black" /> Optimal Path
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span className="text-3xl lg:text-5xl font-black text-white italic tracking-tighter">
+                    {currencySymbol}{plan.price}
+                  </span>
+                  <span className="text-stardust/20 font-bold text-[9px] uppercase tracking-widest italic pt-2">
+                    {plan.name === 'Novice' ? 'unlimited' : billingCycle === 'lifetime' ? 'once' : `/ ${billingCycle.slice(0, 3)}`}
+                  </span>
+                </div>
+
+                <div className="space-y-2 mb-6 flex-grow py-4 border-t border-white/5">
+                  {plan.features.slice(0, 5).map(feature => (
+                    <div key={feature} className="flex items-center gap-3 text-[9px] font-black text-white/50 uppercase tracking-widest group-hover:text-white/80 transition-all">
+                      <div className={`w-4 h-4 rounded-md flex items-center justify-center border ${isRecommended ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-white/5 border-white/10'}`}>
+                        <Check className={`w-2.5 h-2.5 ${isRecommended ? 'text-emerald-400 shadow-xl' : 'text-stardust/20'}`} />
+                      </div>
+                      <span className="truncate">{feature}</span>
+                    </div>
                   ))}
                 </div>
 
-                {/* Seeker Quote */}
-                <p className="text-stardust/80 text-[10px] sm:text-xs font-medium leading-relaxed uppercase tracking-wider italic mb-6 font-bold">
-                  "{testimonial.quote}"
-                </p>
-              </div>
-
-              {/* Seeker Profile & Manifested Tag */}
-              <div className="border-t border-white/5 pt-4 mt-auto">
-                <div className="flex justify-between items-start gap-4 flex-wrap mb-3">
-                  <div>
-                    <h5 className="text-[10px] sm:text-[11px] font-black uppercase text-white italic">{testimonial.name}</h5>
-                    <span className="text-[7.5px] font-bold text-stardust/40 uppercase tracking-widest">{testimonial.role} • {testimonial.location}</span>
+                {plan.isPremium ? (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    disabled={isVerifying}
+                    onClick={() => {
+                      setSelectedPlanForCheckout(plan);
+                      setCheckoutStep('details');
+                      setCheckoutProgress(0);
+                      setShowCheckoutModal(true);
+                    }}
+                    className={`w-full py-4 rounded-2xl font-black uppercase text-[11px] tracking-[0.4em] transition-all flex items-center justify-center gap-3 italic cursor-pointer shadow-2xl ${
+                      isRecommended 
+                        ? 'bg-emerald-500 text-white hover:bg-emerald-400 shadow-emerald-500/20' 
+                        : 'bg-white text-black hover:bg-stardust shadow-white/5'
+                    }`}
+                  >
+                    {isVerifying ? (
+                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>Initiate Access <ArrowRight className="w-4 h-4" /></>
+                    )}
+                  </motion.button>
+                ) : (
+                  <div className="w-full py-4 rounded-2xl border border-white/5 bg-white/[0.01] text-stardust/10 text-[9px] font-black uppercase tracking-[0.5em] italic text-center grayscale">
+                     Baseline Integration
                   </div>
-                </div>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
 
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[7.5px] font-black uppercase tracking-wider text-emerald-400 italic">
-                  <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
-                  Manifested: {testimonial.manifestation}
-                </div>
-              </div>
-              
-              <div className="absolute inset-0 rounded-[2rem] overflow-hidden pointer-events-none z-0">
-                <div className="absolute -right-20 -bottom-20 w-48 h-48 bg-emerald-500/5 rounded-full blur-[100px] opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-              </div>
-            </motion.div>
-          ))}
+        {/* Scroll Call-to-Action */}
+        <div className="flex flex-col items-center mt-8 animate-bounce opacity-20">
+          <span className="text-[7px] font-black text-white uppercase tracking-[0.6em] mb-2 italic">Evidence Below</span>
+          <ChevronDown className="w-4 h-4 text-emerald-400" />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-20 py-16 border-y border-white/5">
-         {[
-           { icon: Users, title: "8,400+ Active Souls", desc: "A global collective manifesting together." },
-           { icon: ShieldCheck, title: "Bank-Grade Security", desc: "Your energy and data are sacredly protected." },
-           { icon: Star, title: "High Frequency", desc: "Optimized protocols for rapid alignment." },
-           { icon: Award, title: "Universal Seal", desc: "Join the top 1% of deliberate creators." }
-         ].map((item, i) => (
-           <div key={i} className="flex flex-col items-center text-center px-4">
-              <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mb-6 group-hover:bg-emerald-500/20 transition-all border border-white/5">
-                <item.icon className="w-6 h-6 text-emerald-400" />
+      {/* Bento Grid Social Proof Layer */}
+      <div className="max-w-6xl mx-auto px-4 mt-16 lg:mt-32 space-y-12">
+        <div className="text-center">
+          <h3 className="text-xl lg:text-3xl font-black tracking-tighter text-white uppercase italic mb-4">
+            Transformation <span className="text-emerald-400">Archives.</span>
+          </h3>
+          <p className="text-stardust/20 text-[9px] font-black uppercase tracking-[0.5em] italic">
+            Direct feedback from the Sovereign collective
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 grid-rows-none gap-4">
+          {/* Main Hero Review */}
+          <div className="col-span-1 md:col-span-2 lg:col-span-3 p-8 rounded-[2rem] bg-white/[0.02] border border-white/10 flex flex-col justify-between hover:border-emerald-500/30 transition-all duration-500 group">
+            <Quote className="w-8 h-8 text-emerald-500/20 group-hover:text-emerald-400/40 transition-colors mb-6" />
+            <p className="text-sm lg:text-lg font-black uppercase tracking-tight text-white/80 leading-relaxed italic mb-8">
+              "The ritual logic engine isn't just a tool; it's a cognitive upgrade. My consistency score jumped from 32% to 98% in the first month. This is literally life-changing."
+            </p>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 overflow-hidden">
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Rahul" alt="User" />
               </div>
-              <h5 className="text-[10px] font-black uppercase tracking-widest text-white mb-2 italic">{item.title}</h5>
-              <p className="text-[9px] font-medium text-stardust/40 uppercase tracking-widest leading-loose">{item.desc}</p>
+              <div>
+                <h4 className="text-[10px] font-black text-white uppercase tracking-widest">Rahul S.</h4>
+                <p className="text-[8px] font-bold text-stardust/30 uppercase tracking-tighter">Founder, Flux Systems</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Stat */}
+          <div className="col-span-1 md:col-span-2 lg:col-span-3 p-8 rounded-[2rem] bg-emerald-500/[0.03] border border-emerald-500/20 flex flex-col items-center justify-center text-center">
+             <div className="text-5xl font-black text-emerald-400 italic tracking-tighter mb-2">91%</div>
+             <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] italic">Reported Sustained Focus Increase</p>
+             <div className="mt-4 flex gap-1">
+               {[...Array(5)].map((_, i) => <Star key={i} className="w-3 h-3 fill-emerald-500 text-emerald-500" />)}
+             </div>
+          </div>
+
+          {/* User Review 2 */}
+          <div className="col-span-1 md:col-span-2 p-6 rounded-[2rem] bg-white/[0.01] border border-white/5 flex flex-col justify-between hover:bg-white/[0.03] transition-colors">
+            <p className="text-[11px] font-black uppercase tracking-widest text-stardust/50 italic leading-relaxed mb-6">
+              "Desire Convergence tech actually works. Visual anchors keep me locked on my targets effortlessly."
+            </p>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 overflow-hidden">
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah" alt="User" />
+              </div>
+              <span className="text-[9px] font-black text-white/30 uppercase tracking-widest italic">— Sarah K.</span>
+            </div>
+          </div>
+
+          {/* Trust Bridge */}
+          <div className="col-span-1 md:col-span-2 p-6 rounded-[2rem] bg-white/[0.01] border border-white/5 flex flex-col items-center justify-center grayscale hover:grayscale-0 transition-all duration-1000">
+             <div className="flex flex-wrap justify-center gap-8 mb-4">
+               <ShieldCheck className="w-6 h-6 text-emerald-400/40" />
+               <Zap className="w-6 h-6 text-white/20" />
+               <Lock className="w-6 h-6 text-white/20" />
+             </div>
+             <p className="text-[8px] font-black text-white/10 uppercase tracking-[0.6em] italic">Zero Friction Architecture</p>
+          </div>
+
+          {/* User Review 3 */}
+          <div className="col-span-1 md:col-span-2 p-6 rounded-[2rem] bg-white/[0.01] border border-white/10 flex flex-col justify-between group">
+            <p className="text-[11px] font-black uppercase tracking-widest text-white/70 italic leading-relaxed mb-6">
+              "The Frequency Shield is the best focus-mode I've ever experienced. Deep state achieved instantly."
+            </p>
+            <div className="flex items-center justify-between">
+              <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest italic">— Marcus V.</span>
+              <div className="flex gap-0.5">
+                {[...Array(5)].map((_, i) => <Star key={i} className="w-2 h-2 fill-emerald-500 text-emerald-500" />)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Global Security Footprint */}
+        <div className="pt-16 pb-8 border-t border-white/5 flex flex-col items-center gap-8">
+           <div className="flex items-center gap-12 grayscale opacity-50 hover:opacity-100 transition-all duration-700">
+             <img src="https://upload.wikimedia.org/wikipedia/commons/8/89/Razorpay_logo.svg" alt="Razorpay" className="h-6" referrerPolicy="no-referrer" />
            </div>
-         ))}
-      </div>
-
-      <div className="max-w-4xl mx-auto rounded-[3rem] bg-white/[0.02] border border-white/5 p-12 overflow-hidden relative group mb-20">
-         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 blur-[100px] rounded-full" />
-         <h3 className="text-xl font-black italic text-white mb-10 text-center uppercase tracking-tighter">Why Settle for <span className="text-stardust/40 line-through tracking-normal">Average?</span></h3>
-         
-         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-            <div>
-               <span className="text-[8px] font-black uppercase tracking-[0.4em] text-stardust/20 mb-4 block italic text-center md:text-left">Novice Restriction</span>
-               <div className="space-y-4">
-                  <div className="text-[10px] font-bold text-stardust/40 line-through uppercase tracking-widest">Unlimited AI Scripting</div>
-                  <div className="text-[10px] font-bold text-stardust/40 line-through uppercase tracking-widest">Priority Quantum Sync</div>
-                  <div className="text-[10px] font-bold text-stardust/30 uppercase tracking-widest">Limited Potential</div>
-               </div>
-            </div>
-            <div className="border-t md:border-t-0 md:border-l border-white/10 pt-10 md:pt-0 md:pl-10">
-               <span className="text-[8px] font-black uppercase tracking-[0.4em] text-emerald-400/40 mb-4 block italic text-center md:text-left">Ascendant Freedom</span>
-               <div className="space-y-4">
-                  <div className="text-[10px] font-black text-white flex items-center gap-2 italic uppercase tracking-widest"><div className="w-1 h-1 bg-emerald-400 rounded-full" /> Divine Scripting Assistant</div>
-                  <div className="text-[10px] font-black text-white flex items-center gap-2 italic uppercase tracking-widest"><div className="w-1 h-1 bg-emerald-400 rounded-full" /> Full Harmonic Spectrum</div>
-                  <div className="text-[10px] font-black text-white flex items-center gap-2 italic uppercase tracking-widest"><div className="w-1 h-1 bg-emerald-400 rounded-full" /> Instant Manifestation Sync</div>
-                  <div className="text-[10px] font-black text-emerald-400 flex items-center gap-2 italic uppercase tracking-widest"><div className="w-1 h-1 bg-emerald-400 rounded-full" /> Mastery over Reality</div>
-               </div>
-            </div>
-         </div>
-         
-         <div className="mt-12 text-center">
-            <button 
-              onClick={() => {
-                setBillingCycle('yearly');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="text-[9px] font-black uppercase tracking-[0.3em] text-emerald-400 hover:text-white transition-colors italic border-b border-emerald-400/20 pb-1"
-            >
-              Secure the 33% Annual Savings Now
-            </button>
-         </div>
-      </div>
-
-      <div className="p-10 rounded-[3rem] bg-white/5 border border-white/5 text-center relative overflow-hidden group hover:bg-white/[0.08] transition-all">
-        <div className="relative z-10 flex flex-col items-center">
-          <h3 className="text-xl font-black tracking-tighter text-white mb-2 italic uppercase">Enterprise?</h3>
-          <p className="text-stardust/40 font-medium text-[10px] max-w-md mb-6 uppercase tracking-widest leading-loose">Custom vibrational solutions for organizations, lineages, and institutions.</p>
-          <button 
-            onClick={() => window.location.href = 'mailto:architect@vibe-os.digital?subject=Enterprise%20Vibration%20Consultation'}
-            className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.3em] text-white/60 hover:text-white transition-all group-hover:gap-4 italic"
-          >
-            Contact Architect <ArrowRight className="w-4 h-4 text-emerald-500" />
-          </button>
+           <div className="px-6 py-2 rounded-full bg-white/[0.02] border border-white/5 flex items-center gap-4">
+              <div className="flex items-center gap-2 text-[7px] font-black text-emerald-400 uppercase tracking-[0.4em] italic">
+                <Lock className="w-3 h-3" /> End-to-End Encrypted
+              </div>
+              <div className="w-px h-3 bg-white/10" />
+              <div className="flex items-center gap-2 text-[7px] font-black text-emerald-400 uppercase tracking-[0.4em] italic">
+                <ShieldCheck className="w-3 h-3" /> GDPR Compliant Node
+              </div>
+           </div>
+           <p className="text-[7px] font-black text-white/10 uppercase tracking-[1em] italic text-center max-w-lg">
+             Quantum Protocol Managed Infrastructure • Sovereign Data Residency
+           </p>
         </div>
-      </div>
-
-      <div className="mt-16 pt-8 border-t border-white/5 flex flex-col items-center gap-8">
-        <div className="flex flex-wrap justify-center gap-8 opacity-20 grayscale hover:grayscale-0 transition-all duration-1000">
-           <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg" alt="PayPal" className="h-4" referrerPolicy="no-referrer" />
-           <img src="https://upload.wikimedia.org/wikipedia/commons/8/89/Razorpay_logo.svg" alt="Razorpay" className="h-4" referrerPolicy="no-referrer" />
-        </div>
-        <p className="text-[8px] font-black uppercase tracking-[0.3em] text-stardust/10 italic">Secured by Universal Intelligence</p>
       </div>
     </div>
   );
 
-  if (isPayPalConfigured) {
-    return (
-      <PayPalScriptProvider options={{ 
-        "client-id": import.meta.env.VITE_PAYPAL_CLIENT_ID!, 
-        currency: "USD",
-        intent: "subscription",
-        vault: true,
-        components: "buttons",
-        "disable-funding": "card"
-      }}>
-        {pricingContent}
-      </PayPalScriptProvider>
-    );
-  }
 
-  return pricingContent;
+  const pricingPortalContent = (
+    <>
+      {pricingContent}
+
+      {/* Modern, Quantum High-Fidelity Custom Checkout Modal */}
+      <AnimatePresence>
+        {showCheckoutModal && selectedPlanForCheckout && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            {/* Modal Backdrop */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (checkoutStep !== 'processing') {
+                  setShowCheckoutModal(false);
+                }
+              }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+
+            {/* Modal Body */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-[95%] sm:max-w-md bg-[#0a0d0e] border border-emerald-500/20 rounded-[2.5rem] p-6 sm:p-8 text-stardust z-10 overflow-y-auto max-h-[90vh] shadow-[0_0_50px_rgba(16,185,129,0.15)] flex flex-col no-scrollbar"
+            >
+              {/* Outer Decorative Nebula Grid */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6 relative z-10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wider text-white italic">Abundance Portal</h3>
+                    <p className="text-[8px] font-bold text-stardust/40 uppercase tracking-widest font-mono">Quantum Realignment</p>
+                  </div>
+                </div>
+                {checkoutStep !== 'processing' && (
+                  <button 
+                    onClick={() => setShowCheckoutModal(false)}
+                    className="w-8 h-8 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors flex items-center justify-center"
+                  >
+                    <X className="w-4 h-4 text-white hover:text-emerald-400" />
+                  </button>
+                )}
+              </div>
+
+              {/* Main Steps Content */}
+              <AnimatePresence mode="wait">
+                {checkoutStep === 'details' && (
+                  <motion.div 
+                    key="details"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 10 }}
+                    className="space-y-6 relative z-10 text-left"
+                  >
+                    {/* Selected Plan Details Card */}
+                    <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 flex items-center justify-between">
+                      <div>
+                        <span className="text-[8px] font-black uppercase tracking-[0.3em] text-emerald-400 block mb-0.5">Frequency plan</span>
+                        <span className="text-sm font-black uppercase text-white italic">{selectedPlanForCheckout.name} Activation</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[8px] font-black uppercase tracking-[0.3em] text-stardust/40 block mb-0.5">{billingCycle} energy exchange</span>
+                        <span className="text-base font-black text-white italic">
+                          {currencySymbol}{getPrice(selectedPlanForCheckout.name)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Dynamic Checkout Action */}
+                    <div className="space-y-4 py-4">
+                      <motion.button
+                        whileHover={{ scale: 1.02, boxShadow: '0 10px 30px rgba(51,113,255,0.3)' }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={executePayment}
+                        className="w-full py-4 rounded-xl font-black uppercase text-[11px] tracking-[0.3em] bg-[#3371FF] text-white shadow-2xl hover:bg-[#285cd9] transition-all italic flex items-center justify-center gap-3 active:scale-95"
+                      >
+                        <img src="https://razorpay.com/favicon.png" className="w-5 h-5 invert brightness-0" alt="RZP" />
+                        {isAdmin ? 'Admin Quick Activate' : 'Pay with Razorpay'}
+                      </motion.button>
+
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-[7.5px] font-black uppercase tracking-widest text-stardust/40">Secure Razorpay Encryption Active</span>
+                        </div>
+                        <p className="text-[7.5px] text-stardust/10 leading-normal uppercase font-black text-center px-10">
+                          Authorized by Razorpay® Protocol. Direct redirection to secure verification port.
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {checkoutStep === 'processing' && (
+                  <motion.div 
+                    key="processing"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="py-12 flex flex-col items-center justify-center space-y-6 relative z-10 text-center"
+                  >
+                    {/* Animated Progress Radial Indicator */}
+                    <div className="relative w-24 h-24 flex items-center justify-center">
+                      <div className="absolute inset-0 rounded-full border-4 border-white/5" />
+                      <div className="absolute inset-x-0 inset-y-0 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin" />
+                      <span className="text-xs font-black text-white italic">{checkoutProgress}%</span>
+                    </div>
+
+                    <div className="text-center space-y-2">
+                      <h4 className="text-xs font-black uppercase text-emerald-400 italic tracking-[0.22em] animate-pulse">Upgrading Vibration...</h4>
+                      <p className="text-[9px] font-black text-stardust/40 uppercase tracking-widest max-w-[240px] leading-relaxed mx-auto">
+                        {checkoutMessage}
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+
+                {checkoutStep === 'success' && (
+                  <motion.div 
+                    key="success"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="py-8 flex flex-col items-center justify-center space-y-6 relative z-10 text-center"
+                  >
+                    {/* Animated check bubble */}
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.3)] animate-pulse">
+                      <CheckCircle2 className="w-8 h-8" />
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-black uppercase text-white italic tracking-[0.15em]">ALIGNMENT SEALED!</h4>
+                      <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest max-w-[280px] leading-relaxed mx-auto">
+                        Your energetic matrix has ascended to {selectedPlanForCheckout.name} successfully.
+                      </p>
+                      <p className="text-[8px] font-medium text-stardust/40 uppercase tracking-[0.2em] leading-normal pt-2">
+                        ALL LIMITS DISSOLVED. RITUALS SYNCED.
+                      </p>
+                    </div>
+
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => {
+                        setShowCheckoutModal(false);
+                        setView('dashboard');
+                      }}
+                      className="w-full py-4 rounded-xl font-black uppercase text-[9px] tracking-[0.3em] bg-white text-black hover:bg-emerald-400 hover:text-white hover:border-emerald-500 transition-all italic flex items-center justify-center gap-2"
+                    >
+                      Enter Sovereign Portal <ArrowRight className="w-4 h-4" />
+                    </motion.button>
+                  </motion.div>
+                )}
+
+                {checkoutStep === 'error' && (
+                  <motion.div 
+                    key="error"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="py-8 flex flex-col items-center justify-center space-y-6 relative z-10 text-center font-bold"
+                  >
+                    <div className="w-16 h-16 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mx-auto">
+                      <X className="w-8 h-8" />
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-black uppercase text-rose-400 italic tracking-[0.15em]">ALIGNMENT INTERRUPTED</h4>
+                      <p className="text-[10px] font-medium text-stardust/60 leading-relaxed max-w-[280px] mx-auto uppercase tracking-wider">
+                        {checkoutMessage}
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2 w-full">
+                      <button
+                        onClick={() => setCheckoutStep('details')}
+                        className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl font-black uppercase text-[9px] tracking-widest text-white hover:bg-white/10 transition-colors"
+                      >
+                        Adjust Details
+                      </button>
+                      <button
+                        onClick={() => setShowCheckoutModal(false)}
+                        className="flex-1 py-3 bg-white text-black rounded-xl font-black uppercase text-[9px] tracking-widest hover:bg-stardust transition-colors"
+                      >
+                        Cancel Portal
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+
+  return pricingPortalContent;
 };
