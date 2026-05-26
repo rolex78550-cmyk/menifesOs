@@ -37,7 +37,7 @@ export const SubscriptionLock = ({ onUpgrade, isAdmin }: SubscriptionLockProps) 
           </h2>
           
           <p className="text-stardust/60 text-base leading-relaxed mb-10 font-medium">
-            Aapka 24-hour free trial celestial alignment complete ho gya he. Continuity sustain karne ke liye active resonance protocol (subscription) activate karein.
+            Your 24-hour celestial trial session has concluded. To sustain your momentum and continue your manifestation journey, please activate the resonance protocol.
           </p>
 
           <div className="space-y-4 mb-10">
@@ -57,15 +57,17 @@ export const SubscriptionLock = ({ onUpgrade, isAdmin }: SubscriptionLockProps) 
             </div>
           </div>
 
-          <button 
+          <motion.button 
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={onUpgrade}
-            className="w-full group relative overflow-hidden bg-white text-black p-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-white/5"
+            className="w-full group relative overflow-hidden bg-white text-black p-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-white/5 cursor-pointer"
           >
             <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <span className="relative z-10 flex items-center justify-center gap-3 group-hover:text-white transition-colors">
-              Upgrade Ceremony <ArrowRight className="w-4 h-4" />
+            <span className="relative z-10 flex items-center justify-center gap-3 group-hover:text-white transition-all duration-300">
+              Upgrade Ceremony <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </span>
-          </button>
+          </motion.button>
 
           <p className="mt-8 text-[9px] font-black uppercase tracking-[0.3em] text-stardust/20">
             Locked by Vibe OS Protocol • Node 3000

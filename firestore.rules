@@ -27,8 +27,8 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    function isServerTimestamp(ts) {
-      return ts is timestamp && ts == request.time;
+    function isServerTimestamp(data, key) {
+      return !(key in data) || (data[key] is timestamp && data[key] == request.time);
     }
 
     function isAdmin() {
@@ -40,14 +40,18 @@ service cloud.firestore {
 
     // Validation helpers
     function isValidHabit(data) {
-      return data.keys().hasAll(['name', 'streak', 'completed', 'ownerId', 'updatedAt']) &&
+      return data.keys().hasAll(['name', 'streak', 'completed', 'ownerId']) &&
              data.name is string && data.name.size() <= 200 &&
              data.streak is int && data.streak >= 0 &&
              data.completed is bool &&
              data.ownerId == request.auth.uid &&
-             isServerTimestamp(data.updatedAt) &&
+             isServerTimestamp(data, 'updatedAt') &&
+             isServerTimestamp(data, 'createdAt') &&
              (!('reminderTime' in data) || (data.reminderTime is string && data.reminderTime.size() <= 5)) &&
-             (!('soundType' in data) || (data.soundType is string && data.soundType in ['divine', 'kaching']));
+             (!('soundType' in data) || (data.soundType is string && data.soundType in ['divine', 'kaching'])) &&
+             (!('category' in data) || data.category is string) &&
+             (!('description' in data) || data.description is string) &&
+             (!('frequency' in data) || data.frequency is string);
     }
 
     function isValidDesire(data) {
@@ -77,12 +81,17 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
-      return data.keys().hasAll(['email', 'tier', 'updatedAt']) &&
+      return data.keys().hasAll(['email', 'tier']) &&
              data.email is string &&
-             data.tier in ['Novice', 'Adept', 'Ascendant', 'Sovereign', 'Amplified', 'Infinite'] &&
-             isServerTimestamp(data.updatedAt) &&
+             isServerTimestamp(data, 'updatedAt') &&
              (!('walkthroughCompleted' in data) || data.walkthroughCompleted is bool) &&
-             (!('subscriptionExpiry' in data) || data.subscriptionExpiry is timestamp);
+             (!('hasCompletedOnboarding' in data) || data.hasCompletedOnboarding is bool) &&
+             (!('manifestationGoal' in data) || data.manifestationGoal is string) &&
+             (!('onboardingAffirmation' in data) || data.onboardingAffirmation is string) &&
+             (!('subscriptionExpiry' in data) || data.subscriptionExpiry is timestamp) &&
+             (!('trialExpiresAt' in data) || data.trialExpiresAt is timestamp) &&
+             (!('isAdmin' in data) || data.isAdmin is bool) &&
+             (!('isSubscribed' in data) || data.isSubscribed is bool);
     }
 
     function isValidHabitLog(data) {
@@ -118,12 +127,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().tier == 'Novice';
-      allow update: if (isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && (
-        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'walkthroughCompleted', 'updatedAt']) ||
-        incoming().diff(existing()).affectedKeys().hasOnly(['tier', 'subscriptionExpiry', 'updatedAt']) ||
-        (existing().tier == incoming().tier && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'tier', 'walkthroughCompleted', 'subscriptionExpiry', 'updatedAt']))
-      )) || (isAdmin() && isValidUser(incoming()));
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
       allow delete: if isAdmin();
     }
 

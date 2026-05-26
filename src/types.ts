@@ -9,6 +9,8 @@ export interface UserProfile {
   trialExpiresAt: any;
   subscriptionTier?: 'free' | 'pro' | 'max';
   fcmToken?: string;
+  hasCompletedOnboarding?: boolean;
+  manifestationGoal?: string;
 }
 
 export interface HabitLog {

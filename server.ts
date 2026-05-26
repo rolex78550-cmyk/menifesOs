@@ -13,9 +13,20 @@ import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import sgMail from "@sendgrid/mail";
 import { Novu } from "@novu/node";
+import { GoogleGenAI, Type } from "@google/genai";
 
 const app = express();
 const PORT = 3000;
+
+// Gemini Initialization
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  httpOptions: {
+    headers: {
+      'User-Agent': 'aistudio-build',
+    }
+  }
+});
 
 app.use(express.json());
 app.use(cors());
@@ -138,7 +149,7 @@ async function broadcastToUser(user: any, ritualName: string) {
         <div style="font-family: sans-serif; background-color: #050505; color: #ffffff; padding: 40px; border-radius: 24px;">
           <p style="color: #10b981; font-weight: 900;">TIME TO ALIGN</p>
           <h1>${ritualName}</h1>
-          <p>Ritual karne ka time aa gya he, ready ho jao!</p>
+          <p>It's time for your ritual. Prepare for alignment!</p>
         </div>
       `,
     });
@@ -150,7 +161,7 @@ async function broadcastToUser(user: any, ritualName: string) {
         token: fcmToken,
         notification: {
           title: `Ritual: ${ritualName}`,
-          body: `Ritual karne ka time aa gya he, ready ho jao!`,
+          body: `It's time for your ritual. Prepare for alignment!`,
         },
         android: { priority: "high" },
         webpush: { notification: { icon: "/vite.svg" } }
@@ -338,6 +349,7 @@ app.post("/api/user/sync", async (req, res) => {
         photoURL,
         isAdmin,
         isSubscribed: false,
+        hasCompletedOnboarding: false,
         createdAt: now,
         trialExpiresAt,
         subscriptionTier: 'free'
@@ -361,6 +373,53 @@ app.post("/api/user/sync", async (req, res) => {
   } catch (error) {
     console.error("[User Sync] Error:", error);
     res.status(500).json({ error: "Failed to sync user" });
+  }
+});
+
+// Gemini Manifestation Onboarding Agent
+app.post("/api/gemini/manifest", async (req, res) => {
+  const { goal, currentChallenges } = req.body;
+
+  if (!goal) return res.status(400).json({ error: "What do you want to manifest?" });
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: `User wants to manifest: "${goal}". Current challenges: "${currentChallenges || 'None'}". 
+      Recommend 3 powerful high-frequency rituals (habits) to align with this manifestation. 
+      For each ritual, provide: name, description, recommended reminder time (HH:mm format), and category.`,
+      config: {
+        systemInstruction: "You are a master manifestation coach for Vibe OS. You suggest high-vibe, actionable rituals that help people align with their wealth, health, or spiritual goals using the law of attraction and consistent habits.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            rituals: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  reminderTime: { type: Type.STRING },
+                  category: { type: Type.STRING },
+                  frequency: { type: Type.STRING, description: "Suggest 'Daily' or 'Weekly'" }
+                },
+                required: ["name", "description", "reminderTime", "category", "frequency"]
+              }
+            },
+            affirmation: { type: Type.STRING }
+          },
+          required: ["rituals", "affirmation"]
+        }
+      }
+    });
+
+    const result = JSON.parse(response.text || "{}");
+    res.json(result);
+  } catch (error) {
+    console.error("[Gemini Manifest] Error:", error);
+    res.status(500).json({ error: "Celestial alignment failed. Please try again." });
   }
 });
 
@@ -516,7 +575,7 @@ app.post("/api/notify-ritual", async (req, res) => {
           <p style="text-transform: uppercase; letter-spacing: 0.2em; font-size: 10px; color: #10b981; font-weight: 900;">System Broadcast</p>
           <h1 style="font-style: italic; text-transform: uppercase; letter-spacing: -0.05em;">Ritual Activation Initiated</h1>
           <p style="font-size: 18px;">Hey <strong>${userName || 'Manifestor'}</strong>,</p>
-          <p style="font-size: 16px; font-style: italic; color: #888;">Ritual karne ka time aa gya he, ready ho jao!</p>
+          <p style="font-size: 16px; font-style: italic; color: #888;">It's time for your ritual. Prepare for alignment!</p>
           <div style="border-left: 2px solid #10b981; padding-left: 20px; margin: 30px 0;">
             <p style="font-size: 24px; font-weight: 900; margin: 0;">${ritualName}</p>
             <p style="font-size: 12px; opacity: 0.5; margin-top: 5px;">Time to align your frequency and manifest your reality.</p>
@@ -560,7 +619,7 @@ app.post("/api/broadcast-ritual", async (req, res) => {
         <div style="font-family: sans-serif; background-color: #050505; color: #ffffff; padding: 40px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.1);">
           <p style="text-transform: uppercase; letter-spacing: 0.3em; font-size: 9px; color: #10b981; font-weight: 900; margin-bottom: 20px;">System Synchronization Active</p>
           <h1 style="font-style: italic; text-transform: uppercase; letter-spacing: -0.05em; font-size: 32px; margin-bottom: 8px;">Time to Align.</h1>
-          <p style="font-size: 16px; opacity: 0.6; margin-bottom: 30px;">Ritual karne ka time aa gya he, ready ho jao!</p>
+          <p style="font-size: 16px; opacity: 0.6; margin-bottom: 30px;">It's time for your ritual. Prepare for alignment!</p>
           <div style="background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.2); padding: 24px; border-radius: 16px; margin: 30px 0;">
             <p style="font-size: 20px; font-weight: 900; margin: 0; color: #10b981; text-transform: uppercase; letter-spacing: 0.1em;">${ritualName}</p>
             <p style="font-size: 11px; opacity: 0.4; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.2em;">Frequency Locked • Manifestation Ready</p>
@@ -582,7 +641,7 @@ app.post("/api/broadcast-ritual", async (req, res) => {
         token: fcmToken,
         notification: {
           title: `Ritual: ${ritualName}`,
-          body: `Ritual karne ka time aa gya he, ready ho jao! "${ritualName}" is starting now.`,
+          body: `It's time for your ritual! "${ritualName}" is starting now.`,
         },
         android: {
           priority: "high",

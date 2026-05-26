@@ -222,6 +222,7 @@ import { StreakCalendar } from './components/StreakCalendar';
 import AdminView from './components/AdminView';
 import CinematicTour from './components/CinematicTour';
 import { SubscriptionLock } from './components/SubscriptionLock';
+import { OnboardingQuiz } from './components/OnboardingQuiz';
 import { 
   AreaChart, 
   Area, 
@@ -725,7 +726,7 @@ export default function App() {
       setActiveToast({
         id: `walkthrough-complete-${Date.now()}`,
         title: "Walkthrough Alignment Complete",
-        body: "Aapka dynamic tour complete ho gya he! Welcome to high frequency alignment."
+        body: "Your dynamic tour is complete! Welcome to high-frequency alignment."
       });
     } catch (e) {
       console.error("Walkthrough completion save failed:", e);
@@ -1838,7 +1839,7 @@ export default function App() {
             // Browser Notification with distinct vibration and sounds
             if ('Notification' in window && Notification.permission === 'granted') {
               new Notification(`Ritual Activation: ${habit.name}`, {
-                body: `Ritual karne ka time aa gya he, ready ho jao! "${habit.name}". Align your frequency now.`,
+                body: `It's time for your ritual: "${habit.name}". Align your frequency now.`,
                 icon: '/vite.svg',
                 vibrate: (habit.soundType === 'kaching' ? [120, 80, 220, 80, 420] : [500, 200, 500]) as any
               } as any);
@@ -1848,7 +1849,7 @@ export default function App() {
             setActiveToast({
               id: `${habit.id}-${currentTime}`,
               title: `Ritual Activation: ${habit.name}`,
-              body: `Ritual karne ka time aa gya he, ready ho jao! Time for your ritual "${habit.name}". Align your frequency now.`
+              body: `It's time for your ritual "${habit.name}". Prepare for peak alignment.`
             });
             
             // Broadcast to Email and Push Channels ONLY if Guest (Server handles registered users)
@@ -2146,7 +2147,7 @@ return () => clearInterval(interval);
     <div className="h-screen bg-cosmic-black text-stardust font-sans flex flex-col lg:flex-row relative overflow-hidden gpu">
       <CosmicBackground isMobile={isMobile} />
       
-      {!isTierActive && !isAdmin && (
+      {!isTierActive && !isAdmin && view !== 'pricing' && view !== 'terms' && view !== 'privacy' && (
         <SubscriptionLock 
           onUpgrade={() => setView('pricing')} 
           isAdmin={isAdmin}
@@ -2179,6 +2180,23 @@ return () => clearInterval(interval);
           >
             <CinematicTour onComplete={handleWalkthroughComplete} />
           </motion.div>
+        )}
+        {user && !user.isGuest && userProfile && !userProfile.hasCompletedOnboarding && (
+           <motion.div
+             key="onboarding-gate"
+             initial={{ opacity: 0 }}
+             animate={{ opacity: 1 }}
+             exit={{ opacity: 0 }}
+             className="fixed inset-0 z-[1000]"
+           >
+             <OnboardingQuiz 
+              user={user} 
+              onComplete={() => {
+                setUserProfile(prev => prev ? { ...prev, hasCompletedOnboarding: true } : prev);
+                setShowWalkthrough(true); // Show cinematic tour after onboarding
+              }} 
+            />
+           </motion.div>
         )}
       </AnimatePresence>
 
@@ -2365,13 +2383,13 @@ const SettingsView = ({ setView, user, tier, onToast, fcmToken, expiry, onLogout
 
     if (Notification.permission === 'granted') {
       new Notification(`Ritual Signal Active`, {
-        body: `Frequency check: Successful. Your divine reminder is ready. Ready ho jao!`,
+        body: `Frequency check: Successful. Your divine reminder is ready. Prepare for alignment!`,
         icon: '/vite.svg'
       });
       onToast({
         id: 'test-signal',
         title: 'Ritual Signal Active',
-        body: 'Frequency check: Successful. Your divine reminder is ready. Ready ho jao!'
+        body: 'Frequency check: Successful. Your divine reminder is ready. Prepare for alignment!'
       });
       playDivineSound();
       triggerBroadcastNotification(user?.email || null, fcmToken, user?.displayName || null, 'Frequency Test Signal');
@@ -4347,9 +4365,9 @@ const HabitsView = ({
 
               <div className="grid grid-cols-1 gap-4">
                 {habits.map(habit => (
-                  <div key={habit.id}>
+                  <div key={`habit-container-${habit.id}`}>
                     <motion.div 
-                      key={habit.id}
+                      key={`habit-motion-${habit.id}`}
                       whileHover={{ y: -2 }}
                       whileTap={{ scale: 0.995 }}
                       className={`group p-6 lg:p-8 rounded-[2.5rem] border border-white/10 transition-all cursor-pointer flex items-center justify-between shadow-2xl relative overflow-hidden backdrop-blur-xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none hover:border-white/30 ${habit.completed ? 'opacity-40 grayscale bg-white/5' : 'bg-black/40'}`}
@@ -5577,6 +5595,62 @@ const PricingView = ({ setView, user, tier, isMobile, updateOfflineProfile, onTo
                 {[...Array(5)].map((_, i) => <Star key={i} className="w-2 h-2 fill-emerald-500 text-emerald-500" />)}
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* FAQ Section */}
+        <div className="mt-32 max-w-4xl mx-auto space-y-12">
+          <div className="text-center">
+            <h3 className="text-xl lg:text-3xl font-black tracking-tighter text-white uppercase italic mb-4">
+              Common <span className="text-emerald-400">Questions.</span>
+            </h3>
+            <p className="text-stardust/20 text-[9px] font-black uppercase tracking-[0.5em] italic">
+              Clarifying the Ascension Path
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[
+              {
+                q: "What exactly is Vibe OS?",
+                a: "Vibe OS is an operating system for your reality. It combines habit tracking, vision boarding, and wealth management into a single, high-frequency interface designed to help you manifest your goals through consistent rituals."
+              },
+              {
+                q: "How does the Ritual Engine help?",
+                a: "The Ritual Engine provides timely triggers and reminders (via email and push notifications) that anchor your focus. By repeating high-value rituals, you align your neurological and energetic frequency with your desires."
+              },
+              {
+                q: "Is my data secure?",
+                a: "Absolutely. We use end-to-end encryption for all personal data. Your desires, rituals, and financial logs are private and strictly isolated to your account using industry-standard security protocols."
+              },
+              {
+                q: "Can I cancel my subscription?",
+                a: "Yes, you can manage or cancel your Sovereign subscription at any time through the Settings panel. Your access will continue until the end of your current billing cycle."
+              },
+              {
+                q: "What is the Difference between Novice and Sovereign?",
+                a: "The Novice pathway is a baseline integration for new seekers. Sovereign access unlocks unlimited rituals, the full Manifestation Academy, and advanced flow-state analysis tools for complete mastery."
+              },
+              {
+                q: "How do I manifest specific goals?",
+                a: "Use the Desire Log to define your vision. The system then recommends specific rituals and shows them in your Vision Board to keep your subconscious mind locked on the target."
+              }
+            ].map((faq, index) => (
+              <motion.div 
+                key={`faq-${index}`}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="p-8 rounded-[2rem] bg-white/[0.02] border border-white/10 hover:border-emerald-500/30 transition-all group"
+              >
+                <h4 className="text-xs font-black text-white uppercase tracking-widest mb-4 italic group-hover:text-emerald-400 transition-colors">
+                  {faq.q}
+                </h4>
+                <p className="text-[10px] font-medium leading-relaxed text-stardust/40 uppercase tracking-wider italic">
+                  {faq.a}
+                </p>
+              </motion.div>
+            ))}
           </div>
         </div>
 
