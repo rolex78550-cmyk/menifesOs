@@ -1,3 +1,5 @@
+import { Timestamp } from 'firebase/firestore';
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -11,6 +13,29 @@ export interface UserProfile {
   fcmToken?: string;
   hasCompletedOnboarding?: boolean;
   manifestationGoal?: string;
+  lastCheckinScore?: number;
+  lastOracleDrawDate?: string;
+  currentOracleCard?: {
+    cardName: string;
+    theme: string;
+    affirmation: string;
+    cosmicAction: string;
+    color: string;
+    symbol: string;
+    completed?: boolean;
+  } | null;
+  lastPositiveDrawDate?: string;
+  currentPositiveCard?: {
+    cardName: string;
+    theme: string;
+    affirmation: string;
+    feelingBoost: string;
+    sacredAction: string;
+    color: string;
+    symbol: string;
+    completed?: boolean;
+  } | null;
+  cosmicXP?: number;
 }
 
 export interface HabitLog {
@@ -22,3 +47,10 @@ export interface HabitLog {
   timestamp: any;
   ownerId: string;
 }
+
+export interface DailyCheckin {
+  score: 1 | 2 | 3 | 4 | 5;
+  timestamp: Timestamp;
+  date: string;
+}
+

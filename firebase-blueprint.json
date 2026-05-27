@@ -76,7 +76,10 @@
         "displayName": { "type": "string" },
         "photoURL": { "type": "string" },
         "tier": { "type": "string", "enum": ["Novice", "Adept", "Ascendant"] },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "whatsappNumber": { "type": "string", "description": "10-digit Indian mobile with +91 prepended" },
+        "whatsappReminders": { "type": "boolean", "description": "Toggle to opt-in or out of WhatsApp notifications" },
+        "whatsappOptOut": { "type": "boolean", "description": "Set to true if user replies STOP to opt-out" }
       },
       "required": ["email", "tier"]
     },
@@ -107,12 +110,27 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["type", "amount", "label", "ownerId", "timestamp"]
+    },
+    "DailyCheckin": {
+      "title": "Daily Checkin",
+      "description": "Morning Energy Check-in",
+      "type": "object",
+      "properties": {
+        "score": { "type": "integer", "enum": [1, 2, 3, 4, 5] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "date": { "type": "string", "format": "date" }
+      },
+      "required": ["score", "timestamp", "date"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
       "description": "User profiles and subscription levels"
+    },
+    "/users/{userId}/checkins/{checkinId}": {
+      "schema": "DailyCheckin",
+      "description": "Morning Energy Check-ins"
     },
     "/habits/{habitId}": {
       "schema": "Habit",

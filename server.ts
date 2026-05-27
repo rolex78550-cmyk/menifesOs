@@ -86,6 +86,135 @@ async function initializeFirestore() {
 }
 
 /**
+ * Send personalized WhatsApp reminder via WATI API
+ */
+async function sendWhatsAppReminder(
+  phone: string,
+  userName: string,
+  ritualName: string,
+  streakDays: number,
+  templateName: string = "ritual_reminder"
+): Promise<void> {
+  const apiKey = process.env.WATI_API_KEY;
+  const baseUrl = process.env.WATI_BASE_URL || "https://live-mt-server.wati.io";
+
+  if (!apiKey) {
+    console.warn("[WATI] API Key missing. Skipping WhatsApp notification.");
+    return;
+  }
+
+  // Format phone: make sure only digits, prefix +91
+  let formattedPhone = phone.trim().replace(/\D/g, "");
+  if (!formattedPhone.startsWith("91")) {
+    formattedPhone = "91" + formattedPhone;
+  }
+
+  let customParams;
+  if (templateName === "streak_danger") {
+    customParams = [
+      { name: "1", value: userName },
+      { name: "2", value: streakDays.toString() }
+    ];
+  } else if (templateName === "milestone" || templateName === "ritual_milestone") {
+    customParams = [
+      { name: "1", value: userName },
+      { name: "2", value: streakDays.toString() }
+    ];
+  } else {
+    customParams = [
+      { name: "1", value: userName },
+      { name: "2", value: ritualName },
+      { name: "3", value: streakDays.toString() }
+    ];
+  }
+
+  const url = `${baseUrl.replace(/\/$/, "")}/api/v1/sendTemplateMessage`;
+  
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        template_name: templateName,
+        broadcast_name: `ritual_reminder_${Date.now()}`,
+        receivers: [{
+          whatsapp_number: formattedPhone,
+          customParams
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const respText = await response.text();
+      console.error(`[WATI] Failed sending Template Message. Status: ${response.status}. Response: ${respText}`);
+    } else {
+      console.log(`[WATI] WhatsApp reminder sent successfully to ${formattedPhone} via template ${templateName}`);
+    }
+  } catch (error) {
+    console.error("[WATI] API call error:", error);
+  }
+}
+
+/**
+ * Send free WhatsApp message via CallMeBot API
+ */
+async function sendCallMeBotWhatsApp(phone: string, apikey: string, message: string): Promise<void> {
+  if (!phone || !apikey || !message) {
+    console.warn("[CallMeBot] Missing required fields, skipping.");
+    return;
+  }
+  const cleanPhone = phone.trim().replace(/\s+/g, "");
+  const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(cleanPhone)}&apikey=${encodeURIComponent(apikey.trim())}&text=${encodeURIComponent(message)}`;
+  
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      const respText = await response.text();
+      console.error(`[CallMeBot] Failed to send. Status: ${response.status}. Response: ${respText}`);
+    } else {
+      console.log(`[CallMeBot] WhatsApp sent to ${cleanPhone}`);
+    }
+  } catch (error) {
+    console.error("[CallMeBot] API call exception:", error);
+  }
+}
+
+/**
+ * Send free Telegram message via Telegram Bot API
+ */
+async function sendTelegramMessage(token: string, chatId: string, message: string): Promise<void> {
+  if (!token || !chatId || !message) {
+    console.warn("[Telegram] Missing credentials, skipping.");
+    return;
+  }
+  const url = `https://api.telegram.org/bot${token.trim()}/sendMessage`;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        chat_id: chatId.trim(),
+        text: message,
+        parse_mode: "HTML"
+      })
+    });
+    if (!response.ok) {
+      const respText = await response.text();
+      console.error(`[Telegram] Failed to send. Status: ${response.status}. Response: ${respText}`);
+    } else {
+      console.log(`[Telegram] Message sent to Chat ID ${chatId}`);
+    }
+  } catch (error) {
+    console.error("[Telegram] API call exception:", error);
+  }
+}
+
+/**
  * Background Scheduler: Scans rituals every minute
  */
 const startScheduler = () => {
@@ -124,6 +253,39 @@ const startScheduler = () => {
 
           console.log(`[Scheduler] Triggering broadcast for ritual: ${habit.name} (Owner: ${ownerId})`);
           await broadcastToUser(userData, habit.name);
+
+          // 1. WhatsApp Trigger (WATI paid path)
+          const hasWhatsapp = userData.whatsappNumber && userData.whatsappNumber.trim() !== "";
+          const optIn = userData.whatsappReminders === true;
+          const optedOut = userData.whatsappOptOut === true;
+
+          if (hasWhatsapp && optIn && !optedOut) {
+            console.log(`[Scheduler] Triggering WhatsApp Reminder for ${habit.name} to ${userData.whatsappNumber}`);
+            await sendWhatsAppReminder(
+              userData.whatsappNumber,
+              userData.displayName || "Manifestor",
+              habit.name || "ritual",
+              habit.streak || 0,
+              "ritual_reminder"
+            );
+          }
+
+          // 2. CallMeBot Trigger (Free WhatsApp path)
+          const callMeBotEnabled = userData.callMeBotEnabled !== false;
+          if (callMeBotEnabled && userData.callMeBotPhone && userData.callMeBotKey) {
+            const botMessage = `Hey ${userData.displayName || "Manifestor"}! Time for your ${habit.name || "ritual"} ritual. You're on a ${habit.streak || 0}-day streak 🔥 vibeOS.in`;
+            console.log(`[Scheduler] Triggering Free CallMeBot WhatsApp to ${userData.callMeBotPhone}`);
+            await sendCallMeBotWhatsApp(userData.callMeBotPhone, userData.callMeBotKey, botMessage);
+          }
+
+          // 3. Telegram Bot Trigger (Free Telegram path)
+          const telegramEnabled = userData.telegramEnabled !== false;
+          if (telegramEnabled && userData.telegramBotToken && userData.telegramChatId) {
+            const htmlMessage = `Hey <b>${userData.displayName || "Manifestor"}</b>! Time for your <b>${habit.name || "ritual"}</b> ritual. You're on a <b>${habit.streak || 0}</b>-day streak 🔥 vibeOS.in`;
+            console.log(`[Scheduler] Triggering Free Telegram message to chat ${userData.telegramChatId}`);
+            await sendTelegramMessage(userData.telegramBotToken, userData.telegramChatId, htmlMessage);
+          }
+
         } catch (innerError) {
           console.error(`[Scheduler] Failed to process habit ${habitDoc.id}:`, innerError);
         }
@@ -133,6 +295,101 @@ const startScheduler = () => {
     }
   });
   console.log("[Scheduler] Background job initialized.");
+};
+
+/**
+ * Streak Danger Scheduler: runs at 9:00 PM IST daily ('30 15 * * *' UTC)
+ */
+const startStreakDangerScheduler = () => {
+  schedule.scheduleJob("30 15 * * *", async () => {
+    if (!db || !isDbHealthy) {
+      console.warn("[Streak Danger] Database not healthy, skipping scan.");
+      return;
+    }
+
+    console.log("[Streak Danger] Running 9 PM IST daily check for uncompleted rituals...");
+
+    try {
+      const usersSnapshot = await db.collection("users").get();
+      if (usersSnapshot.empty) return;
+
+      for (const userDoc of usersSnapshot.docs) {
+        const userData = userDoc.data();
+        if (!userData) continue;
+
+        const hasWhatsapp = userData.whatsappNumber && userData.whatsappNumber.trim() !== "";
+        const optIn = userData.whatsappReminders === true;
+        const optedOut = userData.whatsappOptOut === true;
+
+        const callMeBotEnabled = userData.callMeBotEnabled !== false;
+        const hasCallMeBot = callMeBotEnabled && userData.callMeBotPhone && userData.callMeBotKey;
+
+        const telegramEnabled = userData.telegramEnabled !== false;
+        const hasTelegram = telegramEnabled && userData.telegramBotToken && userData.telegramChatId;
+
+        // Skip if everything is disabled or unconfigured
+        if ((!hasWhatsapp || !optIn || optedOut) && !hasCallMeBot && !hasTelegram) {
+          continue;
+        }
+
+        const userId = userDoc.id;
+
+        // Check user's habits that are NOT completed
+        const habitsSnapshot = await db.collection("habits")
+          .where("ownerId", "==", userId)
+          .where("completed", "==", false)
+          .get();
+
+        if (habitsSnapshot.empty) {
+          console.log(`[Streak Danger] User ${userData.displayName || userId} has completed all rituals today.`);
+          continue;
+        }
+
+        // Send danger message: "{{1}}, your {{2}}-day streak ends at midnight. Complete now: vibeOS.in"
+        // Find the uncompleted habit with the highest streak
+        let maxStreak = -1;
+        let mainHabitName = "ritual";
+        for (const habitDoc of habitsSnapshot.docs) {
+          const hData = habitDoc.data();
+          if ((hData.streak || 0) > maxStreak) {
+            maxStreak = hData.streak || 0;
+            mainHabitName = hData.name || "ritual";
+          }
+        }
+
+        if (maxStreak >= 0) {
+          // Send WATI if configured
+          if (hasWhatsapp && optIn && !optedOut) {
+            console.log(`[Streak Danger] Sending danger WATI to ${userData.whatsappNumber} (User: ${userData.displayName || userId}). Highest streak: ${maxStreak}`);
+            await sendWhatsAppReminder(
+              userData.whatsappNumber,
+              userData.displayName || "Manifestor",
+              mainHabitName,
+              maxStreak,
+              "streak_danger"
+            );
+          }
+
+          // Send CallMeBot if configured
+          if (hasCallMeBot) {
+            const botMessage = `${userData.displayName || "Manifestor"}, your ${maxStreak}-day streak for ${mainHabitName} ends at midnight. Complete now: vibeOS.in`;
+            console.log(`[Streak Danger] Sending danger CallMeBot to ${userData.callMeBotPhone}. Highest streak: ${maxStreak}`);
+            await sendCallMeBotWhatsApp(userData.callMeBotPhone, userData.callMeBotKey, botMessage);
+          }
+
+          // Send Telegram if configured
+          if (hasTelegram) {
+            const htmlMessage = `⚠️ <b>${userData.displayName || "Manifestor"}</b>, your <b>${maxStreak}</b>-day streak for <b>${mainHabitName}</b> ends at midnight. Complete now: vibeOS.in`;
+            console.log(`[Streak Danger] Sending danger Telegram to ${userData.telegramChatId}. Highest streak: ${maxStreak}`);
+            await sendTelegramMessage(userData.telegramBotToken, userData.telegramChatId, htmlMessage);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[Streak Danger] Error in streak danger job:", error);
+    }
+  });
+  console.log("[Streak Danger] Scheduler initialized for 9 PM IST ('30 15 * * *').");
 };
 
 async function broadcastToUser(user: any, ritualName: string) {
@@ -321,7 +578,7 @@ const getRazorpay = () => {
 
 // API Routes
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", message: "Vibe Backend is pulsing." });
+  res.json({ status: "ok", message: "Server is healthy." });
 });
 
 // Sync User Profile with Admin and Trial Logic
@@ -419,7 +676,221 @@ app.post("/api/gemini/manifest", async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error("[Gemini Manifest] Error:", error);
-    res.status(500).json({ error: "Celestial alignment failed. Please try again." });
+    res.status(500).json({ error: "AI generation failed. Please try again." });
+  }
+});
+
+// Gemini Daily Astral Oracle Card Route
+app.post("/api/gemini/oracle", async (req, res) => {
+  const { goal, themeInput, uncompletedHabits } = req.body;
+  
+  const fallbackCards = [
+    {
+      cardName: "The Gate of Release",
+      theme: "Release",
+      affirmation: "I gracefully let go of resistance, allowing the flow of abundance to take over.",
+      cosmicAction: "Tick off 1 pending ritual to stabilize your frequency field today.",
+      color: "#3B82F6",
+      symbol: "✧"
+    },
+    {
+      cardName: "The Sovereign of Abundance",
+      theme: "Abundance",
+      affirmation: "My consciousness is a magnet for unlimited prosperity. I think from abundance, always.",
+      cosmicAction: "Track a transaction or visualize a client success to anchor this wealth focus.",
+      color: "#F59E0B",
+      symbol: "❈"
+    },
+    {
+      cardName: "The Catalyst of Willpower",
+      theme: "Willpower",
+      affirmation: "My intentions are commands to the cosmos. I act with immediate, dynamic presence.",
+      cosmicAction: "Initiate and complete your highest-priority ritual without delay.",
+      color: "#EF4444",
+      symbol: "❂"
+    },
+    {
+      cardName: "The Mirror of Shadows",
+      theme: "Reflection",
+      affirmation: "I find clarity in quiet moments. Self-reflection is my fast track to manifestation.",
+      cosmicAction: "Log a reflection note in your daily diary to capture internal wisdom.",
+      color: "#8B5CF6",
+      symbol: "◈"
+    },
+    {
+      cardName: "The Guardian of Focus",
+      theme: "Focus",
+      affirmation: "I filter out external static. My mind is aligned on the highest frequency.",
+      cosmicAction: "Enable the frequency synthesizer for 3 minutes to anchor your focus.",
+      color: "#10B981",
+      symbol: "❈"
+    },
+    {
+      cardName: "The Vessel of Gratitude",
+      theme: "Gratitude",
+      affirmation: "I celebrate the manifestation of my desires in the unseen field before they arrive.",
+      cosmicAction: "Tether a positive feeling of gratitude by listing 2 daily events of progress.",
+      color: "#EC4899",
+      symbol: "❀"
+    }
+  ];
+
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      console.log("[Gemini Oracle] No API key, using predefined mystical card deck.");
+      const randomCard = fallbackCards[Math.floor(Math.random() * fallbackCards.length)];
+      return res.json(randomCard);
+    }
+
+    const uncompletedText = uncompletedHabits && uncompletedHabits.length > 0 
+      ? `Uncompleted focus areas for today: ${uncompletedHabits.join(", ")}.`
+      : "";
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: `Generate a mystical, daily 'Astral Oracle Card' drawing.
+      The user's manifestation goal is: "${goal || "High frequency alignment"}".
+      ${uncompletedText}
+      Create a unique, beautifully named card that provides a personalized "Cosmic Frequency Focus" and actionable alignment steps for today in high-vibration cosmic prose.
+      Provide:
+      1. cardName (e.g. "The Catalyst of Will", "The Star of Release", "The Sovereign of Flow")
+      2. theme (one or two words summarizing today's key theme like "Focus", "Release", "Abundance", "Integrity", "Surrender")
+      3. affirmation (highly positive, poetic, mystical cosmic affirmation of empowerment)
+      4. cosmicAction (a specific high-vibe physical action or challenge, e.g., completing a ritual, meditating, or logging a thought, tied to their habits if possible)
+      5. color (a high-contrast glowing dark-theme friendly hex code representing this card's energy, e.g. #3B82F6, #F59E0B, #EF4444, #10B981, #EC4899, #8B5CF6)
+      6. symbol (a single beautiful character symbol reflecting sacred geometry, e.g. '✧', '◈', '❈', '❂', '✿', '✺', '⚜')`,
+      config: {
+        systemInstruction: "You are the Vibe OS Astral Oracle, an ancient, sub-quantum energy scanning mechanism. You issue enigmatic, high-frequency daily guidance to help users stabilize their vibration score.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            cardName: { type: Type.STRING },
+            theme: { type: Type.STRING },
+            affirmation: { type: Type.STRING },
+            cosmicAction: { type: Type.STRING },
+            color: { type: Type.STRING },
+            symbol: { type: Type.STRING }
+          },
+          required: ["cardName", "theme", "affirmation", "cosmicAction", "color", "symbol"]
+        }
+      }
+    });
+
+    const result = JSON.parse(response.text || "{}");
+    res.json(result);
+  } catch (error) {
+    console.error("[Gemini Oracle] Error, falling back to local card deck:", error);
+    const randomCard = fallbackCards[Math.floor(Math.random() * fallbackCards.length)];
+    res.json(randomCard);
+  }
+});
+
+// Gemini Daily Positive Card Reading for Desires Section
+app.post("/api/gemini/desire-reading", async (req, res) => {
+  const { desires, manifestationGoal } = req.body;
+
+  const fallbackCards = [
+    {
+      cardName: "The Sovereign of Miracles",
+      theme: "Potential",
+      affirmation: "You hold the subtle keys to rewrite lines of destiny. Your presence carries an undeniable light of hope.",
+      feelingBoost: "Your heart contains an ocean of resilience. Recognize that every obstacle you have faced has refined, not diminished, your radiant spirit.",
+      sacredAction: "Close your eyes, breathe, and place a hand on your heart. Affirm: 'I am completely worthy of peace, success, and pure joy.'",
+      color: "#A78BFA",
+      symbol: "✿"
+    },
+    {
+      cardName: "The Well of Infinite Grace",
+      theme: "Self-Love",
+      affirmation: "You are deserving of love, tenderness, and patience. Treat yourself with the sweet gentleness node of a beloved divine guest.",
+      feelingBoost: "It is safe to forgive yourself. You have tried your hardest with the tools you had. The cosmos is incredibly proud of your quiet effort and persistence today.",
+      sacredAction: "Look around and count three beautiful, simple things in your immediate space that bring you immediate comfort.",
+      color: "#EC4899",
+      symbol: "♥"
+    },
+    {
+      cardName: "The Radiance of Inner Strength",
+      theme: "Resolute Joy",
+      affirmation: "No temporary heavy cloud can ever hide your true brightness. You are a solar beacon of warmth, power, and high-vibrational alignment.",
+      feelingBoost: "The goals you have scripted are already aligning in the unseen quantum field. You are stronger, wiser, and more lovable than any passing doubt tells you.",
+      sacredAction: "Smile softly and recall a memory where you laughed from the depths of your being. Tether that feeling of warmth.",
+      color: "#F59E0B",
+      symbol: "✨"
+    },
+    {
+      cardName: "The Harbor of Gentle Serenity",
+      theme: "Quiet Peace",
+      affirmation: "I am a peaceful lake mirroring the stardust. External storms cannot disturb my crystalline depths.",
+      feelingBoost: "You do not need to constantly hustle to be worthy of your space in the universe. Your existence is already a perfect miracle. Soften your shoulders and let yourself rest.",
+      sacredAction: "Slowly inhale to the count of 4, hold for 4, and release to the count of 6. Feel tension melt away.",
+      color: "#10B981",
+      symbol: "☾"
+    },
+    {
+      cardName: "The Catalyst of Dreams",
+      theme: "Magic",
+      affirmation: "My imagination is a divine laboratory. Everything I desire with love is searching for me with the same active intensity.",
+      feelingBoost: "You are the primary author of your life's chapters. Let the next script you write recount the incredible capacity you have to experience complete joy.",
+      sacredAction: "Write down your topmost desire on a small paper or look at it and say: 'I trust the flow of the universe. I am ready to receive.'",
+      color: "#3B82F6",
+      symbol: "✵"
+    }
+  ];
+
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      console.log("[Gemini Desire Reading] No API key, using predefined celestial deck.");
+      const randomCard = fallbackCards[Math.floor(Math.random() * fallbackCards.length)];
+      return res.json(randomCard);
+    }
+
+    const desiresText = desires && desires.length > 0
+      ? `Their current scripted desires/dreams are: ${desires.map((d: any) => `"${d.text}"`).join(", ")}.`
+      : "";
+
+    const userGoalText = manifestationGoal ? `Their focus/goal is: "${manifestationGoal}".` : "";
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: `Generate a beautiful, mystical 'Daily Positive Celestial Card Reading' to elevate the user's feelings.
+      ${desiresText}
+      ${userGoalText}
+      Create a highly personalized, heart-warming, positive, and validating card that makes the user look at their life, efforts, dreams, and themselves with massive hope, self-love, and happiness.
+      
+      Provide the response in JSON format with these exact fields:
+      1. cardName (e.g., "The Sanctuary of Divine Worth", "The Oasis of Gentle Victory", "The Infinite Horizon of Hope")
+      2. theme (one keyword of positivity like "Self-Love", "Potential", "Inner Peace", "Magic", "Grace", "Strength")
+      3. affirmation (a highly positive, beautifully poetic, celestial affirmation about their goodness or alignment)
+      4. feelingBoost (a heart-felt paragraph or positive note directly validating their efforts, telling them they are doing great, that their dreams are valid and safe, and making them feel loved, proud, and extremely positive)
+      5. sacredAction (a tiny physical act of joy or appreciation they can do right now to raise their mood, e.g., self-hug, deep breath of gratitude, smiling, or viewing a positive photo)
+      6. color (a high-contrast glowing warm hex color representing this card's light, e.g. #EC4899, #F59E0B, #A78BFA, #10B981, #3B82F6)
+      7. symbol (a beautiful character symbol like '♥', '✨', '✿', '☾', '✵', '❀', '⚜')`,
+      config: {
+        systemInstruction: "You are the Vibe OS Divine Light Oracle. Your mission is to shower the user with absolute validation, self-love, and positive frequencies that melt away stress and leave them feeling completely happy, valuable, and inspired.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            cardName: { type: Type.STRING },
+            theme: { type: Type.STRING },
+            affirmation: { type: Type.STRING },
+            feelingBoost: { type: Type.STRING },
+            sacredAction: { type: Type.STRING },
+            color: { type: Type.STRING },
+            symbol: { type: Type.STRING }
+          },
+          required: ["cardName", "theme", "affirmation", "feelingBoost", "sacredAction", "color", "symbol"]
+        }
+      }
+    });
+
+    const result = JSON.parse(response.text || "{}");
+    res.json(result);
+  } catch (error) {
+    console.error("[Gemini Desire Reading] Error, falling back:", error);
+    const randomCard = fallbackCards[Math.floor(Math.random() * fallbackCards.length)];
+    res.json(randomCard);
   }
 });
 
@@ -554,6 +1025,119 @@ app.post("/api/razorpay/verify-payment", async (req, res) => {
   }
 });
 
+// WhatsApp Milestone Trigger API
+app.post("/api/whatsapp/milestone", async (req, res) => {
+  const { userId, ritualName, streakDays } = req.body;
+
+  if (!userId || !ritualName || streakDays === undefined) {
+    return res.status(400).json({ error: "Missing required fields: userId, ritualName, streakDays" });
+  }
+
+  try {
+    if (!db || !isDbHealthy) {
+      return res.status(500).json({ error: "Firestore not healthy" });
+    }
+
+    const userDoc = await db.collection("users").doc(userId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: "User profile not found" });
+    }
+
+    const userData = userDoc.data();
+    if (!userData) {
+      return res.status(500).json({ error: "Empty user profile data" });
+    }
+
+    const hasWhatsapp = userData.whatsappNumber && userData.whatsappNumber.trim() !== "";
+    const optIn = userData.whatsappReminders === true;
+    const optedOut = userData.whatsappOptOut === true;
+
+    if (hasWhatsapp && optIn && !optedOut) {
+      console.log(`[Milestone REST] Sending milestone WhatsApp to ${userData.whatsappNumber} for streak ${streakDays}`);
+      await sendWhatsAppReminder(
+        userData.whatsappNumber,
+        userData.displayName || "Manifestor",
+        ritualName,
+        streakDays,
+        "milestone"
+      );
+    }
+
+    // CallMeBot Free WhatsApp milestone
+    const callMeBotEnabled = userData.callMeBotEnabled !== false;
+    if (callMeBotEnabled && userData.callMeBotPhone && userData.callMeBotKey) {
+      const botMessage = `🌟 Incredible, ${userData.displayName || "Manifestor"}! You just hit a ${streakDays}-day milestone streak with ${ritualName}! Keep shining and stay aligned. vibeOS.in`;
+      console.log(`[Milestone REST] Sending milestone CallMeBot to ${userData.callMeBotPhone}`);
+      await sendCallMeBotWhatsApp(userData.callMeBotPhone, userData.callMeBotKey, botMessage);
+    }
+
+    // Telegram Bot Free milestone
+    const telegramEnabled = userData.telegramEnabled !== false;
+    if (telegramEnabled && userData.telegramBotToken && userData.telegramChatId) {
+      const htmlMessage = `🌟 <b>Incredible, ${userData.displayName || "Manifestor"}!</b> You just hit a <b>${streakDays}</b>-day milestone streak with <b>${ritualName}</b>! Keep shining and stay aligned. vibeOS.in`;
+      console.log(`[Milestone REST] Sending milestone Telegram to ${userData.telegramChatId}`);
+      await sendTelegramMessage(userData.telegramBotToken, userData.telegramChatId, htmlMessage);
+    }
+
+    res.json({ status: "ok" });
+  } catch (err) {
+    console.error("[Milestone REST] Error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// WhatsApp WATI Opt-Out Webhook
+app.post("/api/whatsapp-webhook", async (req, res) => {
+  console.log("[WATI Webhook] Received payload:", JSON.stringify(req.body));
+
+  const body = req.body || {};
+  const rawSender = body.sender || body.whatsappNumber || body.waId || (body.message && body.message.sender) || "";
+  const messageText = String(body.text || body.messageText || (body.message && body.message.text) || "").trim().toUpperCase();
+
+  if (!rawSender) {
+    return res.status(200).json({ status: "ignored", reason: "no sender found" });
+  }
+
+  // Normalize sender phone to a comparison-safe format (only digits)
+  const senderNorm = String(rawSender).replace(/\D/g, "");
+
+  if (messageText === "STOP") {
+    console.log(`[WATI Webhook] STOP reply received from ${rawSender}. Performing opt-out.`);
+
+    try {
+      if (!db || !isDbHealthy) {
+        return res.status(500).json({ error: "Database/Firestore not healthy" });
+      }
+
+      const usersSnapshot = await db.collection("users").get();
+      let updatedCount = 0;
+
+      for (const userDoc of usersSnapshot.docs) {
+        const uData = userDoc.data();
+        if (uData && uData.whatsappNumber) {
+          const storedNorm = String(uData.whatsappNumber).replace(/\D/g, "");
+
+          if (storedNorm === senderNorm || storedNorm.endsWith(senderNorm) || senderNorm.endsWith(storedNorm)) {
+            console.log(`[WATI Webhook] Opting out user: ${userDoc.id} (${uData.displayName || 'Manifestor'})`);
+            await db.collection("users").doc(userDoc.id).update({
+              whatsappOptOut: true,
+              updatedAt: admin.firestore.Timestamp.now()
+            });
+            updatedCount++;
+          }
+        }
+      }
+
+      return res.json({ status: "success", optedOutCount: updatedCount });
+    } catch (err) {
+      console.error("[WATI Webhook] Error processing opt-out:", err);
+      return res.status(500).json({ error: "Internal processing error" });
+    }
+  }
+
+  res.json({ status: "success", message: "ignored non-STOP reply" });
+});
+
 // Ritual Notification (Email)
 app.post("/api/notify-ritual", async (req, res) => {
   const { email, ritualName, userName } = req.body;
@@ -572,7 +1156,7 @@ app.post("/api/notify-ritual", async (req, res) => {
       subject: `Ritual Activation: ${ritualName}`,
       html: `
         <div style="font-family: serif; background-color: #0b0118; color: #fbfbf2; padding: 40px; border-radius: 20px;">
-          <p style="text-transform: uppercase; letter-spacing: 0.2em; font-size: 10px; color: #10b981; font-weight: 900;">System Broadcast</p>
+          <p style="text-transform: uppercase; letter-spacing: 0.2em; font-size: 10px; color: #10b981; font-weight: 900;">Ritual Reminder</p>
           <h1 style="font-style: italic; text-transform: uppercase; letter-spacing: -0.05em;">Ritual Activation Initiated</h1>
           <p style="font-size: 18px;">Hey <strong>${userName || 'Manifestor'}</strong>,</p>
           <p style="font-size: 16px; font-style: italic; color: #888;">It's time for your ritual. Prepare for alignment!</p>
@@ -580,9 +1164,9 @@ app.post("/api/notify-ritual", async (req, res) => {
             <p style="font-size: 24px; font-weight: 900; margin: 0;">${ritualName}</p>
             <p style="font-size: 12px; opacity: 0.5; margin-top: 5px;">Time to align your frequency and manifest your reality.</p>
           </div>
-          <p style="opacity: 0.7;">This is your high-frequency reminder from Vibe OS.</p>
+          <p style="opacity: 0.7;">This is your high-frequency reminder.</p>
           <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 40px 0;">
-          <p style="font-size: 10px; opacity: 0.3; text-align: center; text-transform: uppercase; letter-spacing: 0.1em;">Quantum Tracking Active • Stay Aligned</p>
+          <p style="font-size: 10px; opacity: 0.3; text-align: center; text-transform: uppercase; letter-spacing: 0.1em;">Frequency Tracking Active • Stay Aligned</p>
         </div>
       `,
     });
@@ -613,20 +1197,20 @@ app.post("/api/broadcast-ritual", async (req, res) => {
     const emailRes = await sendEmail({
       to: email,
       ritualName: ritualName,
-      userName: userName || "Sovereign",
+      userName: userName || "Manifestor",
       subject: `⚡ Ritual Activation: ${ritualName}`,
       html: `
         <div style="font-family: sans-serif; background-color: #050505; color: #ffffff; padding: 40px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.1);">
-          <p style="text-transform: uppercase; letter-spacing: 0.3em; font-size: 9px; color: #10b981; font-weight: 900; margin-bottom: 20px;">System Synchronization Active</p>
+          <p style="text-transform: uppercase; letter-spacing: 0.3em; font-size: 9px; color: #10b981; font-weight: 900; margin-bottom: 20px;">Ritual Reminder Active</p>
           <h1 style="font-style: italic; text-transform: uppercase; letter-spacing: -0.05em; font-size: 32px; margin-bottom: 8px;">Time to Align.</h1>
           <p style="font-size: 16px; opacity: 0.6; margin-bottom: 30px;">It's time for your ritual. Prepare for alignment!</p>
           <div style="background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.2); padding: 24px; border-radius: 16px; margin: 30px 0;">
             <p style="font-size: 20px; font-weight: 900; margin: 0; color: #10b981; text-transform: uppercase; letter-spacing: 0.1em;">${ritualName}</p>
-            <p style="font-size: 11px; opacity: 0.4; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.2em;">Frequency Locked • Manifestation Ready</p>
+            <p style="font-size: 11px; opacity: 0.4; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.2em;">Stay Focused • Consistency counts</p>
           </div>
-          <p style="font-size: 13px; opacity: 0.5; line-height: 1.6;">Hey ${userName || 'Sovereign'}, your scheduled ritual window is now open. Enter the Flow State immediately for maximum results.</p>
+          <p style="font-size: 13px; opacity: 0.5; line-height: 1.6;">Hey ${userName || 'Manifestor'}, your scheduled ritual window is now open. Take a few moments now for your ritual.</p>
           <div style="margin-top: 40px; border-top: 1px solid rgba(255,255,255,0.05); pt: 20px;">
-            <p style="font-size: 8px; opacity: 0.2; text-align: center; text-transform: uppercase; letter-spacing: 0.5em;">Quantum Protocol • Vibe OS Node 3000</p>
+            <p style="font-size: 8px; opacity: 0.2; text-align: center; text-transform: uppercase; letter-spacing: 0.5em;">Aligned with Vibe OS</p>
           </div>
         </div>
       `,
@@ -708,6 +1292,7 @@ async function startServer() {
 
   // 2. Start Background Scheduler
   startScheduler();
+  startStreakDangerScheduler();
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

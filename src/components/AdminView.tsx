@@ -150,7 +150,7 @@ export default function AdminView({
   // Load Real Data from Firestore Live Collections on Mount
   useEffect(() => {
     const fetchUsersAndPayments = async () => {
-      addLog("Connecting to Oracle Database of consciousness streams...");
+      addLog("Connecting to Database...");
       let liveUsersList: AdminUser[] = [];
       try {
         // Query users
@@ -197,7 +197,7 @@ export default function AdminView({
           finalUsers = [...finalUsers, ...extraDefaults];
         }
         setAdminUsers(finalUsers);
-        addLog(`Live Users Registry loaded: Synced ${liveUsersList.length} accounts from Firestore.`);
+        addLog(`Users Registry loaded: Synced ${liveUsersList.length} accounts from Firestore.`);
       } catch (err) {
         console.error("Firestore users fetch error: ", err);
         addLog("Database fetch offline. Using sandbox fallback.");
@@ -244,7 +244,7 @@ export default function AdminView({
           finalPayments = [...finalPayments, ...DEFAULT_PAYMENTS];
         }
         setAdminPayments(finalPayments);
-        addLog(`Live Financial Registry loaded: Synced ${livePaymentsList.length} global checkout documents.`);
+        addLog(`Financial Registry loaded: Synced ${livePaymentsList.length} records.`);
       } catch (err) {
         console.error("Firestore transaction fetch error: ", err);
         addLog("Database sync check: Transactions loaded from sandbox fallback.");
@@ -294,11 +294,11 @@ export default function AdminView({
   const [newPayAmount, setNewPayAmount] = useState('199');
   const [newPayGateway, setNewPayGateway] = useState<'Razorpay' | 'PayPal'>('Razorpay');
 
-  // Telemetry Console logs
+  // System logs
   const [systemLogs, setSystemLogs] = useState<string[]>([
-    `[${new Date().toLocaleTimeString()}] Dynamic Admin Dashboard activated safely.`,
-    `[${new Date().toLocaleTimeString()}] Synchronized client structures with server simulation.`,
-    `[${new Date().toLocaleTimeString()}] Payments feed loaded (${adminPayments.length} entries matching database).`
+    `[${new Date().toLocaleTimeString()}] Admin Dashboard activated.`,
+    `[${new Date().toLocaleTimeString()}] Synchronized with server.`,
+    `[${new Date().toLocaleTimeString()}] Payments feed loaded (${adminPayments.length} entries).`
   ]);
 
   const addLog = (msg: string) => {
@@ -581,7 +581,11 @@ export default function AdminView({
 
   const handleDeleteUserNode = async (id: string) => {
     if (id === 'usr_self' || id === user?.uid) {
-      alert("Cannot delete your own admin session node.");
+      onToast({
+        id: 'delete_self_err_' + Date.now(),
+        title: 'Operation Denied',
+        body: 'Cannot delete your own admin session node.'
+      });
       return;
     }
     const target = adminUsers.find(u => u.id === id);
@@ -622,7 +626,7 @@ export default function AdminView({
       });
       setAdminPayments(prev => prev.map(p => {
         if (p.id === payId) {
-          addLog(`Initiated Full Reversal Protocol on live ledger transaction ID ${payId}. Status: Refunded`);
+          addLog(`Initiated Full Reversal on live ledger transaction ID ${payId}. Status: Refunded`);
           return { ...p, status: 'Refunded' };
         }
         return p;
@@ -632,7 +636,7 @@ export default function AdminView({
       // Fallback
       setAdminPayments(prev => prev.map(p => {
         if (p.id === payId) {
-          addLog(`Initiated Full Reversal Protocol on transaction ID ${payId} [Offline Mode]. Status: Refunded`);
+          addLog(`Initiated Full Reversal on transaction ID ${payId} [Offline Mode]. Status: Refunded`);
           return { ...p, status: 'Refunded' };
         }
         return p;
@@ -1439,7 +1443,7 @@ export default function AdminView({
                   </h3>
                   <div className="space-y-4">
                     {[
-                      { id: 1, title: 'Quantum Breathwork', category: 'Energy', status: 'Live' },
+                      { id: 1, title: 'Deep Breathwork', category: 'Energy', status: 'Live' },
                       { id: 2, title: 'Manifestation Masterclass', category: 'Mindset', status: 'Live' },
                       { id: 3, title: 'Sound Healing 101', category: 'Frequency', status: 'Draft' },
                       { id: 4, title: 'Digital Detox Protocol', category: 'Focus', status: 'Live' }
@@ -1552,7 +1556,7 @@ export default function AdminView({
                     <ShieldCheck className="w-4.5 h-4.5" /> Security Hardening
                   </h3>
                   <div className="space-y-4">
-                    <p className="text-[10px] text-stardust/40 font-black tracking-widest uppercase">Encryption Status: Quantum Locked</p>
+                    <p className="text-[10px] text-stardust/40 font-black tracking-widest uppercase">Encryption Status: Secure</p>
                     <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[9px] font-black text-emerald-400 uppercase tracking-widest text-center">
                       SSL/TLS 1.3 Active
                     </div>
@@ -1632,7 +1636,11 @@ export default function AdminView({
                       <button 
                         onClick={() => {
                           addLog("Report Compiled: admin_ledger_resonance_2026.csv generated internally.");
-                          alert("CSV Compiled: " + adminPayments.length + " transactions successfully processed in tabular memory map!");
+                          onToast({
+                            id: 'csv_export_' + Date.now(),
+                            title: 'CSV Compiled',
+                            body: `${adminPayments.length} transactions processed.`
+                          });
                         }}
                         className="px-5 py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-black text-[9px] uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-md shadow-emerald-500/10"
                       >

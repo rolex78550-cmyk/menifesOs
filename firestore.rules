@@ -61,7 +61,7 @@ service cloud.firestore {
              data.date is string &&
              data.isAchieved is bool &&
              data.ownerId == request.auth.uid &&
-             isServerTimestamp(data.updatedAt);
+             isServerTimestamp(data, 'updatedAt');
     }
 
     function isValidVisionItem(data) {
@@ -69,7 +69,7 @@ service cloud.firestore {
              data.imageUrl is string && data.imageUrl.size() <= 1000000 &&
              data.caption is string && data.caption.size() <= 1000 &&
              data.ownerId == request.auth.uid &&
-             isServerTimestamp(data.updatedAt);
+             isServerTimestamp(data, 'updatedAt');
     }
 
     function isValidDiaryEntry(data) {
@@ -77,7 +77,7 @@ service cloud.firestore {
              data.content is string && data.content.size() <= 10000 &&
              data.method in ['free', '369', '555'] &&
              data.ownerId == request.auth.uid &&
-             isServerTimestamp(data.timestamp);
+             isServerTimestamp(data, 'timestamp');
     }
 
     function isValidUser(data) {
@@ -91,14 +91,25 @@ service cloud.firestore {
              (!('subscriptionExpiry' in data) || data.subscriptionExpiry is timestamp) &&
              (!('trialExpiresAt' in data) || data.trialExpiresAt is timestamp) &&
              (!('isAdmin' in data) || data.isAdmin is bool) &&
-             (!('isSubscribed' in data) || data.isSubscribed is bool);
+             (!('isSubscribed' in data) || data.isSubscribed is bool) &&
+             (!('whatsappNumber' in data) || data.whatsappNumber is string) &&
+             (!('whatsappReminders' in data) || data.whatsappReminders is bool) &&
+             (!('whatsappOptOut' in data) || data.whatsappOptOut is bool) &&
+             (!('lastCheckinScore' in data) || (data.lastCheckinScore is int && data.lastCheckinScore >= 1 && data.lastCheckinScore <= 5));
+    }
+
+    function isValidCheckin(data) {
+      return data.keys().hasAll(['score', 'timestamp', 'date']) &&
+             data.score is int && data.score >= 1 && data.score <= 5 &&
+             data.date is string && data.date.size() <= 10 &&
+             isServerTimestamp(data, 'timestamp');
     }
 
     function isValidHabitLog(data) {
       return data.keys().hasAll(['habitId', 'ownerId', 'timestamp']) &&
              data.habitId is string &&
              data.ownerId == request.auth.uid &&
-             isServerTimestamp(data.timestamp) &&
+             isServerTimestamp(data, 'timestamp') &&
              (!('duration' in data) || data.duration is int) &&
              (!('intensity' in data) || (data.intensity is int && data.intensity >= 1 && data.intensity <= 10)) &&
              (!('mood' in data) || (data.mood is string && data.mood.size() <= 100));
@@ -110,7 +121,7 @@ service cloud.firestore {
              data.mood is string &&
              data.date is string &&
              data.ownerId == request.auth.uid &&
-             isServerTimestamp(data.timestamp);
+             isServerTimestamp(data, 'timestamp');
     }
 
     function isValidTransaction(data) {
@@ -119,7 +130,7 @@ service cloud.firestore {
              (data.amount is int || data.amount is float) &&
              data.label is string && data.label.size() <= 200 &&
              data.ownerId == request.auth.uid &&
-             isServerTimestamp(data.timestamp) &&
+             isServerTimestamp(data, 'timestamp') &&
              (!('category' in data) || (data.category is string && data.category.size() <= 100));
     }
 
@@ -130,6 +141,13 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.auth.uid == userId;
       allow update: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
       allow delete: if isAdmin();
+
+      match /checkins/{checkinId} {
+        allow get: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
+        allow list: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
+        allow create, update: if (isSignedIn() && request.auth.uid == userId && isValidCheckin(incoming())) || isAdmin();
+        allow delete: if isAdmin();
+      }
     }
 
     match /transactions/{transactionId} {
@@ -144,58 +162,58 @@ service cloud.firestore {
 
     match /habit_logs/{logId} {
       allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
-      allow get: if isOwner(existing());
-      allow create: if isSignedIn() && isValidHabitLog(incoming());
-      allow delete: if isOwner(existing());
+      allow get: if isOwner(existing()) || isAdmin();
+      allow create: if (isSignedIn() && isValidHabitLog(incoming())) || isAdmin();
+      allow delete: if isOwner(existing()) || isAdmin();
     }
 
     match /frequency_logs/{logId} {
       allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
-      allow get: if isOwner(existing());
-      allow create: if isSignedIn() && isValidFrequencyLog(incoming());
-      allow delete: if isOwner(existing());
+      allow get: if isOwner(existing()) || isAdmin();
+      allow create: if (isSignedIn() && isValidFrequencyLog(incoming())) || isAdmin();
+      allow delete: if isOwner(existing()) || isAdmin();
     }
 
     match /habits/{habitId} {
-      allow get: if isOwner(existing());
+      allow get: if isOwner(existing()) || isAdmin();
       allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
-      allow create: if isSignedIn() && isValidHabit(incoming());
-      allow update: if isSignedIn() && isOwner(existing()) && isValidHabit(incoming()) && (
+      allow create: if (isSignedIn() && isValidHabit(incoming())) || isAdmin();
+      allow update: if (isSignedIn() && isOwner(existing()) && isValidHabit(incoming()) && (
         incoming().diff(existing()).affectedKeys().hasOnly(['completed', 'streak', 'updatedAt']) ||
         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'reminderTime', 'soundType', 'updatedAt'])
-      );
-      allow delete: if isOwner(existing());
+      )) || isAdmin();
+      allow delete: if isOwner(existing()) || isAdmin();
     }
 
     match /desires/{desireId} {
-      allow get: if isOwner(existing());
+      allow get: if isOwner(existing()) || isAdmin();
       allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
-      allow create: if isSignedIn() && isValidDesire(incoming());
-      allow update: if isSignedIn() && isOwner(existing()) && isValidDesire(incoming()) && (
+      allow create: if (isSignedIn() && isValidDesire(incoming())) || isAdmin();
+      allow update: if (isSignedIn() && isOwner(existing()) && isValidDesire(incoming()) && (
         incoming().diff(existing()).affectedKeys().hasOnly(['isAchieved', 'updatedAt']) ||
         incoming().diff(existing()).affectedKeys().hasOnly(['text', 'category', 'updatedAt'])
-      );
-      allow delete: if isOwner(existing());
+      )) || isAdmin();
+      allow delete: if isOwner(existing()) || isAdmin();
     }
 
     match /vision_items/{itemId} {
-      allow get: if isOwner(existing());
+      allow get: if isOwner(existing()) || isAdmin();
       allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
-      allow create: if isSignedIn() && isValidVisionItem(incoming());
-      allow update: if isSignedIn() && isOwner(existing()) && isValidVisionItem(incoming()) && (
+      allow create: if (isSignedIn() && isValidVisionItem(incoming())) || isAdmin();
+      allow update: if (isSignedIn() && isOwner(existing()) && isValidVisionItem(incoming()) && (
         incoming().diff(existing()).affectedKeys().hasOnly(['caption', 'imageUrl', 'updatedAt'])
-      );
-      allow delete: if isOwner(existing());
+      )) || isAdmin();
+      allow delete: if isOwner(existing()) || isAdmin();
     }
 
     match /diary_entries/{entryId} {
-      allow get: if isOwner(existing());
+      allow get: if isOwner(existing()) || isAdmin();
       allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
-      allow create: if isSignedIn() && isValidDiaryEntry(incoming());
-      allow update: if isSignedIn() && isOwner(existing()) && isValidDiaryEntry(incoming()) && (
+      allow create: if (isSignedIn() && isValidDiaryEntry(incoming())) || isAdmin();
+      allow update: if (isSignedIn() && isOwner(existing()) && isValidDiaryEntry(incoming()) && (
         incoming().diff(existing()).affectedKeys().hasOnly(['content', 'timestamp'])
-      );
-      allow delete: if isOwner(existing());
+      )) || isAdmin();
+      allow delete: if isOwner(existing()) || isAdmin();
     }
   }
 }

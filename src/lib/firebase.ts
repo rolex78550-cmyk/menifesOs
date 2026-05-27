@@ -58,33 +58,21 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-export async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log("Firebase connection established.");
-  } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
-    }
-  }
-}
-
 export const loginWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     return result;
   } catch (error: any) {
-    if (error.code === 'auth/popup-closed-by-user') {
+    const errorCode = error.code || (error.message?.includes('popup-closed-by-user') ? 'auth/popup-closed-by-user' : null);
+    if (errorCode === 'auth/popup-closed-by-user') {
       console.log("User closed the sign-in popup.");
-      throw error; // Let the caller decide if they want to handle it
+      throw error;
     }
     console.error("Login failed:", error);
     if (error.code === 'auth/popup-blocked') {
-      alert("Popup Blocked: Please allow popups for this site to sign in.");
+      console.warn("Popup Blocked: Please allow popups for this site to sign in.");
     } else if (error.code === 'auth/operation-not-allowed') {
-      alert("Auth Error: Google Sign-In is not enabled in your Firebase Console. Please go to Authentication > Sign-in method and enable Google.");
-    } else {
-      alert("Login failed: " + (error.message || "Unknown error"));
+      console.error("Auth Error: Google Sign-In is not enabled.");
     }
     throw error;
   }
@@ -96,7 +84,6 @@ export const loginAnonymously = async () => {
     return result;
   } catch (error: any) {
     console.error("Anonymous sign-in failed:", error);
-    alert("Connection Error: " + (error.message || "Unknown error"));
     throw error;
   }
 };
