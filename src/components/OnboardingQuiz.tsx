@@ -16,7 +16,7 @@ import {
   ChevronLeft
 } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { collection, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 interface OnboardingQuizProps {
   user: any;
@@ -193,12 +193,12 @@ export const OnboardingQuiz = ({ user, onComplete }: OnboardingQuizProps) => {
 
         // Update user profile completion state
         const userRef = doc(db, 'users', user.uid);
-        await updateDoc(userRef, {
+        await setDoc(userRef, {
           hasCompletedOnboarding: true,
           manifestationGoal: goal,
           onboardingAffirmation: suggestions.affirmation,
           updatedAt: serverTimestamp()
-        });
+        }, { merge: true });
       }
 
       onComplete();
@@ -314,18 +314,29 @@ export const OnboardingQuiz = ({ user, onComplete }: OnboardingQuizProps) => {
                     type="text"
                     value={challenges}
                     onChange={(e) => setChallenges(e.target.value)}
-                    placeholder="What is holding you back?"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white font-medium placeholder:text-stardust/20 focus:ring-2 focus:ring-emerald-500/30 outline-none transition-all text-sm"
+                    placeholder="What is holding you back? (e.g. distraction, consistency)"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 text-white font-medium placeholder:text-stardust/20 focus:ring-2 focus:ring-emerald-500/30 outline-none transition-all text-sm sm:text-base"
                   />
                 </div>
 
                 <div className="pt-2">
                   <button 
+                    type="button"
                     onClick={handleManifest}
                     disabled={!goal || isLoading}
-                    className="w-full bg-white text-black p-4 sm:p-5 rounded-xl font-black uppercase text-xs tracking-[0.2em] flex items-center justify-center gap-2.5 disabled:opacity-50 transition-all hover:bg-emerald-400 hover:text-white"
+                    className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white p-4.5 sm:p-5 rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] flex items-center justify-center gap-2.5 disabled:opacity-50 transition-all duration-300 shadow-[0_0_30px_rgba(16,185,129,0.2)] hover:shadow-[0_0_45px_rgba(16,185,129,0.4)] hover:scale-[1.02] active:scale-[0.98] cursor-pointer focus:outline-none"
                   >
-                    {isLoading ? <Loader2 className="w-4.5 h-4.5 animate-spin" /> : <>Calibrate Energy <ArrowRight className="w-3.5 h-3.5" /></>}
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-4.5 h-4.5 animate-spin" />
+                        <span>Calibrating Aura...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Calibrate Energy</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -376,7 +387,7 @@ export const OnboardingQuiz = ({ user, onComplete }: OnboardingQuizProps) => {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                           <h4 className="text-white font-black uppercase text-[11px] tracking-wider truncate">{ritual.name}</h4>
+                           <h4 className="text-white font-black uppercase text-[11px] tracking-wider break-words flex-1">{ritual.name}</h4>
                            <span className="text-[8px] font-black uppercase text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded-full font-mono">{ritual.reminderTime}</span>
                         </div>
                         <p className="text-stardust/50 text-[11px] leading-relaxed break-words">{ritual.description}</p>
@@ -392,11 +403,22 @@ export const OnboardingQuiz = ({ user, onComplete }: OnboardingQuizProps) => {
               </div>
 
               <button 
+                type="button"
                 onClick={finalizeOnboarding}
                 disabled={isLoading}
-                className="w-full bg-white text-black p-4 sm:p-5 rounded-xl font-black uppercase text-xs tracking-[0.2em] flex items-center justify-center gap-2 hover:bg-slate-100 active:scale-98 transition-all"
+                className="w-full bg-white text-black p-4.5 sm:p-5 rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] flex items-center justify-center gap-2.5 hover:bg-emerald-400 hover:text-white disabled:opacity-50 transition-all duration-300 shadow-[0_4px_20px_rgba(255,255,255,0.1)] hover:shadow-[0_4px_30px_rgba(16,185,129,0.3)] hover:scale-[1.01] active:scale-[0.98] cursor-pointer focus:outline-none"
               >
-                {isLoading ? <Loader2 className="w-4.5 h-4.5 animate-spin" /> : <>Accept & Open Dashboard <ArrowRight className="w-3.5 h-3.5" /></>}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4.5 h-4.5 animate-spin text-emerald-400" />
+                    <span>Activating Resonance...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Accept & Open Dashboard</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </>
+                )}
               </button>
             </div>
           </motion.div>
