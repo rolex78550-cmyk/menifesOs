@@ -33,7 +33,7 @@ async function generateContentWithFallbackAndRetry(params: {
   contents: any;
   config?: any;
 }) {
-  const models = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
+  const models = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.1-pro-preview"];
   let lastError: any = null;
 
   for (const model of models) {

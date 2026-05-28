@@ -155,7 +155,7 @@ const triggerBroadcastNotification = async (email: string | null, fcmToken: stri
       })
     });
     const data = await response.json();
-    console.log("[Vibe OS] Broadcast results:", data);
+    console.log("[MenifestOS] Broadcast results:", data);
   } catch (error) {
     console.error("Broadcast failed:", error);
   }
@@ -578,7 +578,7 @@ const Sidebar = ({ currentView, setView, tier, isMobile, user, userProfile, onLo
           <Infinity className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h1 className="text-xl font-black tracking-tighter text-white uppercase italic">Vibe</h1>
+          <h1 className="text-xl font-black tracking-tighter text-white uppercase italic">Menifest</h1>
           <p className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-500/40">Continuum</p>
         </div>
       </div>
@@ -801,7 +801,7 @@ export default function App() {
       return;
     }
 
-    const localCompleted = localStorage.getItem(`vibe_os_walkthrough_completed_${user.uid}`);
+    const localCompleted = localStorage.getItem(`menifest_os_walkthrough_completed_${user.uid}`);
     const firestoreCompleted = (userProfile as any).walkthroughCompleted;
 
     if (!localCompleted && !firestoreCompleted) {
@@ -819,7 +819,7 @@ export default function App() {
     if (!user) return;
     try {
       // 1. Mark in LocalStorage immediately
-      localStorage.setItem(`vibe_os_walkthrough_completed_${user.uid}`, 'true');
+      localStorage.setItem(`menifest_os_walkthrough_completed_${user.uid}`, 'true');
 
       // 2. Mark in Firestore if real user
       if (!user.isGuest) {
@@ -829,11 +829,11 @@ export default function App() {
         });
       } else {
         // Guest Profile update
-        const savedProfile = localStorage.getItem('vibe_os_guest_profile');
+        const savedProfile = localStorage.getItem('menifest_os_guest_profile');
         if (savedProfile) {
           const parsed = JSON.parse(savedProfile);
           parsed.walkthroughCompleted = true;
-          localStorage.setItem('vibe_os_guest_profile', JSON.stringify(parsed));
+          localStorage.setItem('menifest_os_guest_profile', JSON.stringify(parsed));
           setUserProfile(parsed);
         }
       }
@@ -845,7 +845,7 @@ export default function App() {
       setActiveToast({
         id: `walkthrough-complete-${Date.now()}`,
         title: "Walkthrough Alignment Complete",
-        body: "Your dynamic tour is complete! Welcome to high-frequency alignment."
+        body: "Your visually stunning walkthrough is complete! Welcome to MenifestOS alignment."
       });
     } catch (e) {
       console.error("Walkthrough completion save failed:", e);
@@ -860,7 +860,7 @@ export default function App() {
       tier: tierName,
       subscriptionExpiry: defaultExpiry.toISOString()
     };
-    localStorage.setItem('vibe_os_guest_profile', JSON.stringify(updatedProfile));
+    localStorage.setItem('menifest_os_guest_profile', JSON.stringify(updatedProfile));
     setUserProfile(updatedProfile);
   };
 
@@ -868,7 +868,7 @@ export default function App() {
     setUserProfile((prev: any) => {
       const updated = prev ? { ...prev, ...fields } : fields;
       if (user?.isGuest) {
-        localStorage.setItem('vibe_os_guest_profile', JSON.stringify(updated));
+        localStorage.setItem('menifest_os_guest_profile', JSON.stringify(updated));
       }
       return updated;
     });
@@ -951,7 +951,7 @@ export default function App() {
 
   const trialStartTime = useMemo(() => {
     if (!user) return Date.now();
-    const localKey = `vibe_os_trial_start_${user.uid}`;
+    const localKey = `menifest_os_trial_start_${user.uid}`;
     const saved = localStorage.getItem(localKey);
     if (saved) {
       return parseInt(saved, 10);
@@ -964,7 +964,7 @@ export default function App() {
     return startTime;
   }, [user]);
 
-  const trialDurationMs = 24 * 60 * 60 * 1000; // 24 hours
+  const trialDurationMs = 72 * 60 * 60 * 1000; // 3 Days (72 hours) instead of 1 day (24 hours)
   const trialExpiryTime = trialStartTime + trialDurationMs;
   const timeLeftMs = Math.max(0, trialExpiryTime - currentTime);
 
@@ -974,7 +974,7 @@ export default function App() {
     if (!userProfile) return false;
     if (userProfile.tier !== 'Novice') return true; // Already subscribed or higher tier
 
-    // Novice users are active if their 1-day trial is active
+    // Novice users are active if their 3-day trial is active
     if (timeLeftMs > 0) {
       return true;
     }
@@ -996,7 +996,7 @@ export default function App() {
   }, [userProfile, timeLeftMs, isAdmin]);
 
 
-  const activeTier = isTierActive ? (userProfile?.tier || 'Novice') : 'Novice';
+  const activeTier = isAdmin ? (userProfile?.tier === 'Novice' ? 'Sovereign' : userProfile?.tier || 'Sovereign') : (isTierActive ? (userProfile?.tier || 'Novice') : 'Novice');
   const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
   const [desires, setDesires] = useState<Desire[]>([]);
   const [visionItems, setVisionItems] = useState<VisionItem[]>([]);
@@ -1042,12 +1042,12 @@ export default function App() {
     };
 
     if (user.isGuest) {
-      const savedProfile = localStorage.getItem('vibe_os_guest_profile');
+      const savedProfile = localStorage.getItem('menifest_os_guest_profile');
       if (savedProfile) {
         setUserProfile(JSON.parse(savedProfile));
       } else {
         const guestProj = { tier: 'Novice', isAdmin: false, isSubscribed: false, hasCompletedOnboarding: false };
-        localStorage.setItem('vibe_os_guest_profile', JSON.stringify(guestProj));
+        localStorage.setItem('menifest_os_guest_profile', JSON.stringify(guestProj));
         setUserProfile(guestProj);
       }
       return;
@@ -1072,12 +1072,6 @@ export default function App() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const oscillatorRef = useRef<OscillatorNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  
-  const restartTour = () => {
-    setShowWalkthrough(true);
-    setView('dashboard');
-    window.scrollTo(0, 0);
-  };
   
   // Custom & Guided Audio Streams (Bhajans, Meditation Tracks & Podcasts)
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
@@ -1267,14 +1261,14 @@ export default function App() {
   }, [view]);
 
   const handleAppLogout = async () => {
-    localStorage.removeItem('vibe_os_guest_user');
-    localStorage.removeItem('vibe_os_guest_profile');
-    localStorage.removeItem('vibe_os_guest_habits');
-    localStorage.removeItem('vibe_os_guest_habit_logs');
-    localStorage.removeItem('vibe_os_guest_desires');
-    localStorage.removeItem('vibe_os_guest_vision_items');
-    localStorage.removeItem('vibe_os_guest_diary_entries');
-    localStorage.removeItem('vibe_os_guest_transactions');
+    localStorage.removeItem('menifest_os_guest_user');
+    localStorage.removeItem('menifest_os_guest_profile');
+    localStorage.removeItem('menifest_os_guest_habits');
+    localStorage.removeItem('menifest_os_guest_habit_logs');
+    localStorage.removeItem('menifest_os_guest_desires');
+    localStorage.removeItem('menifest_os_guest_vision_items');
+    localStorage.removeItem('menifest_os_guest_diary_entries');
+    localStorage.removeItem('menifest_os_guest_transactions');
     setUser(null);
     try {
       await logout();
@@ -1287,11 +1281,11 @@ export default function App() {
     try {
       const unsubscribe = onAuthStateChanged(auth, (u) => {
         if (u) {
-          localStorage.removeItem('vibe_os_guest_user');
+          localStorage.removeItem('menifest_os_guest_user');
           setUser(u);
           setLoading(false);
         } else {
-          const savedGuest = localStorage.getItem('vibe_os_guest_user');
+          const savedGuest = localStorage.getItem('menifest_os_guest_user');
           if (savedGuest) {
             setUser(JSON.parse(savedGuest));
           } else {
@@ -1301,7 +1295,7 @@ export default function App() {
         }
       }, (err) => {
         console.error("Auth change error:", err);
-        const savedGuest = localStorage.getItem('vibe_os_guest_user');
+        const savedGuest = localStorage.getItem('menifest_os_guest_user');
         if (savedGuest) {
           setUser(JSON.parse(savedGuest));
         }
@@ -1310,7 +1304,7 @@ export default function App() {
       return () => unsubscribe();
     } catch (e) {
       console.error("Auth init error:", e);
-      const savedGuest = localStorage.getItem('vibe_os_guest_user');
+      const savedGuest = localStorage.getItem('menifest_os_guest_user');
       if (savedGuest) {
         setUser(JSON.parse(savedGuest));
       }
@@ -1326,7 +1320,7 @@ export default function App() {
     }
 
     if (user.isGuest) {
-      const saved = localStorage.getItem('vibe_os_guest_habits');
+      const saved = localStorage.getItem('menifest_os_guest_habits');
       if (saved) {
         setHabits(JSON.parse(saved));
       } else {
@@ -1345,7 +1339,7 @@ export default function App() {
             completed: true
           }
         ];
-        localStorage.setItem('vibe_os_guest_habits', JSON.stringify(initialHabits));
+        localStorage.setItem('menifest_os_guest_habits', JSON.stringify(initialHabits));
         setHabits(initialHabits);
       }
       return;
@@ -1367,7 +1361,7 @@ export default function App() {
     }
 
     if (user.isGuest) {
-      const saved = localStorage.getItem('vibe_os_guest_checkins');
+      const saved = localStorage.getItem('menifest_os_guest_checkins');
       if (saved) {
         const parsed = JSON.parse(saved);
         const data = Object.values(parsed) as DailyCheckin[];
@@ -1399,7 +1393,7 @@ export default function App() {
         const hasTodayCheckin = dailyCheckins.some(c => c.date === ist.dateString);
         
         // Check local flag to prevent any delay/flashing
-        const localCompletedKey = `vibe_os_morning_checkin_${user.uid}_${ist.dateString}`;
+        const localCompletedKey = `menifest_os_morning_checkin_${user.uid}_${ist.dateString}`;
         const isLocallyCompleted = localStorage.getItem(localCompletedKey) === 'true';
 
         if (!hasTodayCheckin && !isLocallyCompleted) {
@@ -1438,7 +1432,7 @@ export default function App() {
           return habit;
         });
         if (needsReset) {
-          localStorage.setItem('vibe_os_guest_habits', JSON.stringify(updatedHabits));
+          localStorage.setItem('menifest_os_guest_habits', JSON.stringify(updatedHabits));
           setHabits(updatedHabits);
         }
         return;
@@ -1486,7 +1480,7 @@ export default function App() {
     }
 
     if (user.isGuest) {
-      const saved = localStorage.getItem('vibe_os_guest_habit_logs');
+      const saved = localStorage.getItem('menifest_os_guest_habit_logs');
       setHabitLogs(saved ? JSON.parse(saved) : []);
       return;
     }
@@ -1507,7 +1501,7 @@ export default function App() {
     }
 
     if (user.isGuest) {
-      const saved = localStorage.getItem('vibe_os_guest_desires');
+      const saved = localStorage.getItem('menifest_os_guest_desires');
       setDesires(saved ? JSON.parse(saved) : []);
       return;
     }
@@ -1528,7 +1522,7 @@ export default function App() {
     }
 
     if (user.isGuest) {
-      const saved = localStorage.getItem('vibe_os_guest_vision_items');
+      const saved = localStorage.getItem('menifest_os_guest_vision_items');
       setVisionItems(saved ? JSON.parse(saved) : []);
       return;
     }
@@ -1549,7 +1543,7 @@ export default function App() {
     }
 
     if (user.isGuest) {
-      const saved = localStorage.getItem('vibe_os_guest_diary_entries');
+      const saved = localStorage.getItem('menifest_os_guest_diary_entries');
       setDiaryEntries(saved ? JSON.parse(saved) : []);
       return;
     }
@@ -1570,7 +1564,7 @@ export default function App() {
     }
 
     if (user.isGuest) {
-      const saved = localStorage.getItem('vibe_os_guest_transactions');
+      const saved = localStorage.getItem('menifest_os_guest_transactions');
       setTransactions(saved ? JSON.parse(saved) : []);
       return;
     }
@@ -1599,7 +1593,7 @@ export default function App() {
 
       if (user.isGuest) {
         const updated = desires.map(d => d.id === id ? { ...d, isAchieved: !d.isAchieved, updatedAt: new Date().toISOString() } : d);
-        localStorage.setItem('vibe_os_guest_desires', JSON.stringify(updated));
+        localStorage.setItem('menifest_os_guest_desires', JSON.stringify(updated));
         setDesires(updated);
         return;
       }
@@ -1626,7 +1620,7 @@ export default function App() {
         // Un-marking
         if (user.isGuest) {
           const updated = habits.map(h => h.id === id ? { ...h, completed: false, streak: Math.max(0, h.streak - 1), updatedAt: new Date().toISOString() } : h);
-          localStorage.setItem('vibe_os_guest_habits', JSON.stringify(updated));
+          localStorage.setItem('menifest_os_guest_habits', JSON.stringify(updated));
           setHabits(updated);
           return;
         }
@@ -1657,16 +1651,16 @@ export default function App() {
           ...metrics
         };
         const logs = [log, ...habitLogs];
-        localStorage.setItem('vibe_os_guest_habit_logs', JSON.stringify(logs));
+        localStorage.setItem('menifest_os_guest_habit_logs', JSON.stringify(logs));
         setHabitLogs(logs);
 
         const newStreak = habit.streak + 1;
         const updatedHabits = habits.map(h => h.id === habitId ? { ...h, completed: true, streak: newStreak, updatedAt: new Date().toISOString() } : h);
-        localStorage.setItem('vibe_os_guest_habits', JSON.stringify(updatedHabits));
+        localStorage.setItem('menifest_os_guest_habits', JSON.stringify(updatedHabits));
         setHabits(updatedHabits);
 
         // If guest has stored profile with whatsapp reminders, call backend milestone route
-        const guestProfileStr = localStorage.getItem('vibe_os_guest_profile');
+        const guestProfileStr = localStorage.getItem('menifest_os_guest_profile');
         if (guestProfileStr) {
           try {
             const guestProfile = JSON.parse(guestProfileStr);
@@ -1774,7 +1768,7 @@ export default function App() {
           updatedAt: new Date().toISOString()
         };
         const items = [item, ...desires];
-        localStorage.setItem('vibe_os_guest_desires', JSON.stringify(items));
+        localStorage.setItem('menifest_os_guest_desires', JSON.stringify(items));
         setDesires(items);
         return;
       }
@@ -1797,7 +1791,7 @@ export default function App() {
     try {
       if (user.isGuest) {
         const items = desires.filter(d => d.id !== id);
-        localStorage.setItem('vibe_os_guest_desires', JSON.stringify(items));
+        localStorage.setItem('menifest_os_guest_desires', JSON.stringify(items));
         setDesires(items);
         return;
       }
@@ -1823,7 +1817,7 @@ export default function App() {
           updatedAt: new Date().toISOString()
         };
         const items = [item, ...habits];
-        localStorage.setItem('vibe_os_guest_habits', JSON.stringify(items));
+        localStorage.setItem('menifest_os_guest_habits', JSON.stringify(items));
         setHabits(items);
         return;
       }
@@ -1847,7 +1841,7 @@ export default function App() {
     try {
       if (user.isGuest) {
         const items = habits.map(h => h.id === id ? { ...h, name, reminderTime, soundType, updatedAt: new Date().toISOString() } : h);
-        localStorage.setItem('vibe_os_guest_habits', JSON.stringify(items));
+        localStorage.setItem('menifest_os_guest_habits', JSON.stringify(items));
         setHabits(items);
         return;
       }
@@ -1868,7 +1862,7 @@ export default function App() {
     try {
       if (user.isGuest) {
         const items = habits.filter(h => h.id !== id);
-        localStorage.setItem('vibe_os_guest_habits', JSON.stringify(items));
+        localStorage.setItem('menifest_os_guest_habits', JSON.stringify(items));
         setHabits(items);
         return;
       }
@@ -1891,7 +1885,7 @@ export default function App() {
           updatedAt: new Date().toISOString()
         };
         const items = [item, ...visionItems];
-        localStorage.setItem('vibe_os_guest_vision_items', JSON.stringify(items));
+        localStorage.setItem('menifest_os_guest_vision_items', JSON.stringify(items));
         setVisionItems(items);
         return;
       }
@@ -1912,7 +1906,7 @@ export default function App() {
     try {
       if (user.isGuest) {
         const items = visionItems.filter(v => v.id !== id);
-        localStorage.setItem('vibe_os_guest_vision_items', JSON.stringify(items));
+        localStorage.setItem('menifest_os_guest_vision_items', JSON.stringify(items));
         setVisionItems(items);
         return;
       }
@@ -1935,7 +1929,7 @@ export default function App() {
           timestamp: new Date().toISOString()
         };
         const items = [item, ...diaryEntries];
-        localStorage.setItem('vibe_os_guest_diary_entries', JSON.stringify(items));
+        localStorage.setItem('menifest_os_guest_diary_entries', JSON.stringify(items));
         setDiaryEntries(items);
         return;
       }
@@ -1965,7 +1959,7 @@ export default function App() {
           timestamp: new Date().toISOString()
         };
         const items = [item, ...transactions];
-        localStorage.setItem('vibe_os_guest_transactions', JSON.stringify(items));
+        localStorage.setItem('menifest_os_guest_transactions', JSON.stringify(items));
         setTransactions(items);
         return;
       }
@@ -1988,7 +1982,7 @@ export default function App() {
     try {
       if (user.isGuest) {
         const items = transactions.filter(t => t.id !== id);
-        localStorage.setItem('vibe_os_guest_transactions', JSON.stringify(items));
+        localStorage.setItem('menifest_os_guest_transactions', JSON.stringify(items));
         setTransactions(items);
         return;
       }
@@ -2131,7 +2125,7 @@ export default function App() {
           }
         });
         setNotifiedMinute(currentTime);
-    console.log(`[Vibe OS] Check complete for ${currentTime}. Total habits: ${habits.length}`);
+    console.log(`[MenifestOS] Check complete for ${currentTime}. Total habits: ${habits.length}`);
   }
 }, 15000);
 
@@ -2190,7 +2184,7 @@ return () => clearInterval(interval);
         <div className="absolute top-6 left-6 right-6 flex items-center justify-between z-20 pointer-events-none max-w-7xl mx-auto opacity-60">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-emerald-400 animate-spin" style={{ animationDuration: '6s' }} />
-            <span className="font-mono text-[9px] font-black uppercase tracking-[0.3em] text-white">Vibe OS • Gateway v2.4</span>
+            <span className="font-mono text-[9px] font-black uppercase tracking-[0.3em] text-white">MenifestOS • Gateway v2.4</span>
           </div>
           <div className="flex items-center gap-4 text-right font-mono text-[8px] sm:text-[9px] font-bold text-stardust/40 uppercase tracking-widest">
             <span className="hidden sm:inline">Vibrational Stability: 99.8%</span>
@@ -2240,7 +2234,7 @@ return () => clearInterval(interval);
                   </div>
 
                   <h1 className="text-3xl sm:text-4xl font-extrabold mb-2.5 tracking-tight text-slate-900 leading-none">
-                    Welcome to Vibe OS
+                    Welcome to MenifestOS
                   </h1>
                   
                   <p className="text-slate-500 text-xs sm:text-[13px] font-medium leading-relaxed mb-8 max-w-[300px]">
@@ -2379,7 +2373,7 @@ return () => clearInterval(interval);
         <SettingsView 
           setView={setView} 
           user={user} 
-          tier={userProfile?.tier || 'Novice'} 
+          tier={activeTier} 
           userProfile={userProfile}
           setUserProfile={setUserProfile}
           onToast={setActiveToast} 
@@ -2433,7 +2427,7 @@ return () => clearInterval(interval);
       <Sidebar 
         currentView={view} 
         setView={setView} 
-        tier={userProfile?.tier || 'Novice'} 
+        tier={activeTier} 
         isMobile={isMobile} 
         user={user} 
         userProfile={userProfile}
@@ -2448,23 +2442,13 @@ return () => clearInterval(interval);
             onSave={addHabitLog}
           />
         )}
-        {showWalkthrough && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[1000]"
-          >
-            <CinematicTour onComplete={handleWalkthroughComplete} />
-          </motion.div>
-        )}
         {showMorningCheckin && (
           <MorningCheckin 
             userId={user?.uid}
             isGuest={!!user?.isGuest}
             dateString={todayISTString}
             onComplete={(score) => {
-              localStorage.setItem(`vibe_os_morning_checkin_${user?.uid}_${todayISTString}`, 'true');
+              localStorage.setItem(`menifest_os_morning_checkin_${user?.uid}_${todayISTString}`, 'true');
               setShowMorningCheckin(false);
               
               setDailyCheckins(prev => {
@@ -2490,6 +2474,9 @@ return () => clearInterval(interval);
             scoreIncreased={true}
             onDismiss={() => setShowCelebration(false)} 
           />
+        )}
+        {showWalkthrough && (
+          <CinematicTour onComplete={handleWalkthroughComplete} />
         )}
       </AnimatePresence>
 
@@ -2574,7 +2561,7 @@ return () => clearInterval(interval);
 
       {/* 5-Minute Warning Popup Overlay */}
       <AnimatePresence>
-        {timeLeftMs > 0 && timeLeftMs <= 5 * 60 * 1000 && !dismissedWarning && userProfile?.tier === 'Novice' && (
+        {timeLeftMs > 0 && timeLeftMs <= 5 * 60 * 1000 && !dismissedWarning && activeTier === 'Novice' && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-[999]">
             <motion.div
               initial={{ scale: 0.95, y: 20, opacity: 0 }}
@@ -2607,9 +2594,9 @@ return () => clearInterval(interval);
                   })()}
                 </div>
 
-                <p className="text-stardust/70 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-6 leading-relaxed italic">
-                  Your 1-Day Trial is about to end. The divine frequency generator requires constant reciprocity. 
-                  Skip below to continue with what remains of your single-day access, or anchor your reality fully before the portal snaps shut.
+                <p className="text-sm text-stardust/70 leading-relaxed mb-8">
+                  Your 3-Day Trial is about to end. The divine frequency generator requires constant reciprocity. 
+                  Skip below to continue with what remains of your 3-day access, or anchor your reality fully before the portal snaps shut.
                 </p>
 
                 <div className="flex flex-col gap-3 w-full">
@@ -2709,7 +2696,7 @@ const SettingsView = ({
           updatedAt: serverTimestamp()
         }, { merge: true });
       } else {
-        const currentGuest = localStorage.getItem('vibe_os_guest_profile');
+        const currentGuest = localStorage.getItem('menifest_os_guest_profile');
         const parsed = currentGuest ? JSON.parse(currentGuest) : {};
         const updated = {
           ...parsed,
@@ -2717,7 +2704,7 @@ const SettingsView = ({
           callMeBotKey: callMeBotKey.trim(),
           callMeBotEnabled
         };
-        localStorage.setItem('vibe_os_guest_profile', JSON.stringify(updated));
+        localStorage.setItem('menifest_os_guest_profile', JSON.stringify(updated));
         if (setUserProfile) {
           setUserProfile(updated);
         }
@@ -2748,7 +2735,7 @@ const SettingsView = ({
           updatedAt: serverTimestamp()
         }, { merge: true });
       } else {
-        const currentGuest = localStorage.getItem('vibe_os_guest_profile');
+        const currentGuest = localStorage.getItem('menifest_os_guest_profile');
         const parsed = currentGuest ? JSON.parse(currentGuest) : {};
         const updated = {
           ...parsed,
@@ -2756,7 +2743,7 @@ const SettingsView = ({
           telegramChatId: telegramChatId.trim(),
           telegramEnabled
         };
-        localStorage.setItem('vibe_os_guest_profile', JSON.stringify(updated));
+        localStorage.setItem('menifest_os_guest_profile', JSON.stringify(updated));
         if (setUserProfile) {
           setUserProfile(updated);
         }
@@ -2863,7 +2850,7 @@ const SettingsView = ({
         }, { merge: true });
       } else {
         // Guest user local storage
-        const currentGuest = localStorage.getItem('vibe_os_guest_profile');
+        const currentGuest = localStorage.getItem('menifest_os_guest_profile');
         const parsed = currentGuest ? JSON.parse(currentGuest) : {};
         const updated = {
           ...parsed,
@@ -2871,7 +2858,7 @@ const SettingsView = ({
           whatsappReminders: true,
           whatsappOptOut: false
         };
-        localStorage.setItem('vibe_os_guest_profile', JSON.stringify(updated));
+        localStorage.setItem('menifest_os_guest_profile', JSON.stringify(updated));
         if (setUserProfile) {
           setUserProfile(updated);
         }
@@ -2911,7 +2898,7 @@ const SettingsView = ({
           updatedAt: serverTimestamp()
         }, { merge: true });
       } else {
-        const currentGuest = localStorage.getItem('vibe_os_guest_profile');
+        const currentGuest = localStorage.getItem('menifest_os_guest_profile');
         const parsed = currentGuest ? JSON.parse(currentGuest) : {};
         const updated = {
           ...parsed,
@@ -2919,7 +2906,7 @@ const SettingsView = ({
           whatsappReminders: false,
           whatsappOptOut: false
         };
-        localStorage.setItem('vibe_os_guest_profile', JSON.stringify(updated));
+        localStorage.setItem('menifest_os_guest_profile', JSON.stringify(updated));
         if (setUserProfile) {
           setUserProfile(updated);
         }
@@ -2944,13 +2931,13 @@ const SettingsView = ({
           updatedAt: serverTimestamp()
         }, { merge: true });
       } else {
-        const currentGuest = localStorage.getItem('vibe_os_guest_profile');
+        const currentGuest = localStorage.getItem('menifest_os_guest_profile');
         const parsed = currentGuest ? JSON.parse(currentGuest) : {};
         const updated = {
           ...parsed,
           whatsappReminders: checked
         };
-        localStorage.setItem('vibe_os_guest_profile', JSON.stringify(updated));
+        localStorage.setItem('menifest_os_guest_profile', JSON.stringify(updated));
         if (setUserProfile) {
           setUserProfile(updated);
         }
@@ -2993,14 +2980,14 @@ const SettingsView = ({
           updatedAt: serverTimestamp()
         }, { merge: true });
       } else {
-        const currentGuest = localStorage.getItem('vibe_os_guest_profile');
+        const currentGuest = localStorage.getItem('menifest_os_guest_profile');
         const parsed = currentGuest ? JSON.parse(currentGuest) : {};
         const updated = {
           ...parsed,
           hasCompletedOnboarding: false,
           updatedAt: new Date().toISOString()
         };
-        localStorage.setItem('vibe_os_guest_profile', JSON.stringify(updated));
+        localStorage.setItem('menifest_os_guest_profile', JSON.stringify(updated));
       }
       if (setUserProfile) {
         setUserProfile((prev: any) => prev ? { ...prev, hasCompletedOnboarding: false } : { hasCompletedOnboarding: false });
@@ -3061,13 +3048,13 @@ const SettingsView = ({
       Notification.requestPermission().then(permission => {
         if (permission === 'granted') {
           new Notification(`System Aligned`, {
-            body: `You are now synchronized with the Vibe OS frequency.`,
+            body: `You are now synchronized with the MenifestOS frequency.`,
             icon: '/vite.svg'
           });
           onToast({
             id: 'system-aligned',
             title: 'System Aligned',
-            body: 'You are now synchronized with the Vibe OS frequency.'
+            body: 'You are now synchronized with the MenifestOS frequency.'
           });
           playDivineSound();
           triggerBroadcastNotification(user?.email || null, fcmToken, user?.displayName || null, 'Ritual Synchronization');
@@ -3086,7 +3073,7 @@ const SettingsView = ({
     <div className="max-w-4xl mx-auto px-4 lg:px-0 pb-20">
       <div className="mb-12">
         <h3 className="text-3xl lg:text-4xl font-black mb-4 tracking-tight text-white italic">System Configuration</h3>
-        <p className="text-stardust/40 font-medium leading-relaxed max-w-2xl italic">"The outer world is a reflection of the inner settings." — Vibe Core</p>
+        <p className="text-stardust/40 font-medium leading-relaxed max-w-2xl italic">"The outer world is a reflection of the inner settings." — Menifest Core</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -3458,28 +3445,7 @@ const SettingsView = ({
           </button>
         </div>
 
-        {/* System & Session */}
-        <div className="bg-black/40 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between shadow-2xl backdrop-blur-xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none md:col-span-2">
-          <div>
-            <h4 className="text-[10px] font-black uppercase tracking-widest text-white/20 mb-8 italic">Interactive Guidance</h4>
-            <div className="flex items-center gap-6 mb-6">
-              <div className="w-14 h-14 bg-white/5 rounded-[1.5rem] flex items-center justify-center border border-white/10 shadow-xl">
-                <Compass className="w-6 h-6 text-white animate-pulse" />
-              </div>
-              <div>
-                <p className="text-xl font-black text-white italic uppercase tracking-tighter leading-none mb-1">Onboarding Tour</p>
-                <p className="text-[10px] font-black text-white/20 uppercase tracking-widest italic">Animated Walkthrough Tour</p>
-              </div>
-            </div>
-          </div>
-          <button 
-            type="button"
-            onClick={onTriggerWalkthrough}
-            className="w-full py-5 bg-white text-black hover:bg-slate-100 border border-transparent rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(255,255,255,0.1)] italic cursor-pointer focus:outline-none"
-          >
-            <Compass className="w-4 h-4 text-black" /> Launch Walkthrough Tour
-          </button>
-        </div>
+
 
         {/* Danger Zone */}
         <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between border-red-500/10">
@@ -3498,7 +3464,7 @@ const SettingsView = ({
                 className="w-full p-4 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl text-left transition-all group"
               >
                 <p className="text-[10px] font-black uppercase tracking-widest text-white">Logout / Disconnect</p>
-                <p className="text-[8px] font-bold text-stardust/20 uppercase tracking-widest">Sign out of Vibe OS safely</p>
+                <p className="text-[8px] font-bold text-stardust/20 uppercase tracking-widest">Sign out of MenifestOS safely</p>
               </button>
             </div>
           </div>
@@ -3508,7 +3474,7 @@ const SettingsView = ({
         <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] md:col-span-2">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
             <div>
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-white mb-6">Vibe OS</h4>
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-white mb-6">MenifestOS</h4>
               <p className="text-stardust/20 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
                 The absolute operating system for digital manifestation and intention amplification.
               </p>
@@ -3530,7 +3496,7 @@ const SettingsView = ({
                     <ShieldCheck className="w-3.5 h-3.5 inline text-emerald-500" /> Admin Control Matrix
                   </li>
                 )}
-                <li className="text-[8px] opacity-20 uppercase tracking-widest">Build ID: VIBE.2.0.26.RESONANCE</li>
+                <li className="text-[8px] opacity-20 uppercase tracking-widest">Build ID: MENIFEST.2.0.26.RESONANCE</li>
               </ul>
             </div>
           </div>
@@ -3913,10 +3879,10 @@ const DashboardView = ({
     return [
       {
         tag: "OS VERSION",
-        title: "VIBE OS CORE UPDATE",
+        title: "MENIFESTOS CORE UPDATE",
         detail: isSubscribed 
-          ? "VIBE SYSTEM v2.5 PREMIUM: Sub-quantum frequency streams connected successfully. Galactic syncing at 432Hz."
-          : "VIBE SYSTEM v2.5 LITE: Standard frequency core active. Signal limits current bandwidth. Access premium tiers to expand.",
+          ? "MENIFEST SYSTEM v2.5 PREMIUM: Sub-quantum frequency streams connected successfully. Galactic syncing at 432Hz."
+          : "MENIFEST SYSTEM v2.5 LITE: Standard frequency core active. Signal limits current bandwidth. Access premium tiers to expand.",
         color: "text-emerald-400",
         badge: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
       },
@@ -3970,29 +3936,6 @@ const DashboardView = ({
     const timeB = b.updatedAt?.toMillis ? b.updatedAt.toMillis() : 0;
     return timeA - timeB; // Oldest first for layering
   });
-
-  const displayVision = useMemo(() => isMobile ? sortedVisionItems.slice(-4) : sortedVisionItems, [sortedVisionItems, isMobile]);
-
-  const getPosition = (index: number) => {
-    // Artistic scatter distribution
-    const radius = isMobile ? 120 : 180;
-    const angle = (index * 137.5) * (Math.PI / 180); // Golden angle for even distribution
-    const dist = Math.sqrt(index) * (isMobile ? 15 : 25);
-    
-    const x = Math.cos(angle) * dist;
-    const y = Math.sin(angle) * dist;
-    
-    const scale = 1.0 - (index * 0.05); 
-    const rotation = (Math.sin(index * 42) * 12);
-    
-    return {
-      left: `calc(50% + ${x}px - ${isMobile ? '64px' : '96px'})`,
-      top: `calc(50% + ${y}px - ${isMobile ? '64px' : '96px'})`,
-      scale,
-      rotate: `${rotation}deg`,
-      zIndex: 10 + index
-    };
-  };
 
   const currentFocus = activeDesires[focusIndex % activeDesires.length] || desires[0];
 
@@ -4347,6 +4290,13 @@ const DashboardView = ({
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
         className="md:col-span-2 lg:col-span-3 bg-black backdrop-blur-3xl rounded-[3rem] p-8 sm:p-10 lg:p-12 border border-white/5 shadow-2xl relative overflow-hidden group min-h-[450px] sm:min-h-[500px]"
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          e.currentTarget.style.setProperty('--mouse-x', `${x}px`);
+          e.currentTarget.style.setProperty('--mouse-y', `${y}px`);
+        }}
       >
         {/* Animated Background Atmosphere */}
         <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
@@ -4365,70 +4315,45 @@ const DashboardView = ({
           </button>
         </div>
 
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none perspective-[1000px]">
-          <div className="relative w-full h-full max-w-sm max-h-[400px]">
-            <AnimatePresence>
-              {displayVision.map((item, idx) => {
-                const pos = getPosition(idx);
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 rounded-[3rem]">
+          {sortedVisionItems.length > 0 ? (
+            <div className="w-[110%] h-[110%] -left-[5%] -top-[5%] relative grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 auto-rows-fr gap-0 opacity-40 mix-blend-luminosity group-hover:mix-blend-normal group-hover:opacity-60 transition-all duration-1000 rotate-1 scale-105">
+              {sortedVisionItems.slice(0, 12).map((item, idx) => {
+                const isLarge = idx === 0 || idx === 5 || idx === 10;
                 return (
-                  <motion.div 
+                  <div 
                     key={item.id} 
-                    initial={{ opacity: 0, scale: 0, rotate: 0, y: 100 }}
-                    animate={{ 
-                      opacity: 1, 
-                      scale: pos.scale,
-                      left: pos.left,
-                      top: pos.top,
-                      rotate: pos.rotate,
-                      zIndex: pos.zIndex
-                    }}
-                    transition={{ 
-                      type: "spring",
-                      stiffness: 100,
-                      damping: 15,
-                      delay: 0.1 * idx
-                    }}
-                    whileHover={isMobile ? undefined : { 
-                      scale: 1.25, 
-                      zIndex: 200, 
-                      rotate: 0, 
-                      y: -20,
-                      transition: { type: "spring", stiffness: 400, damping: 20 } 
-                    }}
-                    className="absolute w-40 h-40 md:w-56 md:h-56 group/vision cursor-pointer pointer-events-auto"
-                    style={{ transformStyle: 'preserve-3d' }}
+                    className={`relative overflow-hidden border border-white/5 ${isLarge ? 'col-span-2 row-span-2' : 'col-span-1 row-span-1'}`}
                   >
-                    <div className="w-full h-full p-2 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] shadow-2xl relative overflow-hidden group-hover/vision:border-emerald-500/40 transition-all duration-700 shadow-black/80 ring-1 ring-white/5">
-                      <img 
-                        src={item.imageUrl} 
-                        alt={item.caption} 
-                        className="w-full h-full object-cover rounded-[2rem] grayscale-[0.2] brightness-90 group-hover/vision:grayscale-0 group-hover/vision:brightness-110 group-hover/vision:scale-110 transition-all duration-1000 ease-out" 
-                        referrerPolicy="no-referrer"
-                      />
-                      
-                      {/* Interaction Glow */}
-                      <div className="absolute inset-0 opacity-0 group-hover/vision:opacity-100 transition-opacity duration-700 bg-gradient-to-t from-emerald-500/20 via-transparent to-transparent pointer-events-none" />
-                      
-                      <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover/vision:opacity-100 transition-all duration-500 translate-y-4 group-hover/vision:translate-y-0">
-                        <p className="text-[10px] font-black text-white uppercase tracking-[0.2em] italic truncate text-center drop-shadow-md">{item.caption}</p>
-                      </div>
-                    </div>
-                    
-                    {/* Shadow underneath */}
-                    <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-3/4 h-2 bg-black/40 blur-xl rounded-full scale-0 group-hover/vision:scale-100 transition-transform duration-500 opacity-50" />
-                  </motion.div>
+                    <img 
+                      src={item.imageUrl} 
+                      className="absolute inset-0 w-full h-full object-cover filter contrast-[1.1] saturate-[1.2]"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute inset-0 bg-emerald-900/10 mix-blend-overlay" />
+                  </div>
                 );
               })}
-            </AnimatePresence>
-            
-            {displayVision.length === 0 && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-stardust/10">
-                <ImageIcon className="w-20 h-20 mb-4 animate-pulse" />
-                <p className="text-[10px] font-black uppercase tracking-[0.4em] italic">Waiting for Vision</p>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-stardust/10">
+              <ImageIcon className="w-20 h-20 mb-4 animate-pulse" />
+              <p className="text-[10px] font-black uppercase tracking-[0.4em] italic">Waiting for Vision</p>
+            </div>
+          )}
         </div>
+        
+        {/* Soft blackout gradients to ensure structural text readability over the wallpaper */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none z-0 rounded-[3rem] group-hover:opacity-0 transition-opacity duration-700" />
+        <div className="absolute inset-0 bg-gradient-to-br from-black/90 via-black/20 to-black/90 pointer-events-none z-0 rounded-[3rem] group-hover:opacity-0 transition-opacity duration-700" />
+        
+        {/* Spotlight hover effect tracking mouse */}
+        <div 
+          className="absolute inset-0 pointer-events-none z-0 rounded-[3rem] opacity-0 group-hover:opacity-100 transition-opacity duration-700"
+          style={{
+            background: 'radial-gradient(circle 350px at var(--mouse-x, 50%) var(--mouse-y, 50%), transparent 0%, rgba(0,0,0,0.6) 40%, rgba(0,0,0,0.95) 85%)'
+          }}
+        />
       </motion.div>
     </div>
   );
@@ -6535,7 +6460,7 @@ const LockedTrialView = ({ setView, logout, desires }: LockedTrialViewProps) => 
 
       <div className="relative max-w-lg mb-8">
         <p className="text-stardust/70 text-xs sm:text-sm font-bold uppercase tracking-widest leading-relaxed italic">
-          Your 24-Hour Trial was designed to let your physical vessel touch the high-frequency grid. 
+          Your 72-Hour Trial was designed to let your physical vessel touch the high-frequency grid. 
           {activeDesireText ? (
             <>
               {" "}We detected your deep alignment to manifest <span className="text-emerald-400 underline font-black">"{activeDesireText}"</span> — which is currently suspended in the sub-quantum blueprint. You are extremely close. Stay aligned, and this physical manifestation will be fully yours! But do not let your frequency drop now.
@@ -6583,7 +6508,7 @@ const LockedTrialView = ({ setView, logout, desires }: LockedTrialViewProps) => 
           onClick={() => {
             const keys = Object.keys(localStorage);
             keys.forEach(k => {
-              if (k.startsWith('vibe_os_trial_start_')) {
+              if (k.startsWith('menifest_os_trial_start_')) {
                 localStorage.setItem(k, Date.now().toString());
               }
             });
@@ -6592,7 +6517,7 @@ const LockedTrialView = ({ setView, logout, desires }: LockedTrialViewProps) => 
           className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-400/40 hover:text-emerald-400 transition-colors italic flex items-center gap-2"
         >
           <Sparkles className="w-3 h-3 animate-spin text-emerald-400/60" />
-          [ Dev Action: Reset 1-Day Trial for Review (Get 24h Free) ]
+          [ Dev Action: Reset 3-Day Trial for Review (Get 72h Free) ]
         </button>
       </div>
     </div>
@@ -6613,7 +6538,7 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   // Custom High-Fidelity Checkout Modal States
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [selectedPlanForCheckout, setSelectedPlanForCheckout] = useState<any>(null);
-  const [checkoutStep, setCheckoutStep] = useState<'details' | 'processing' | 'success' | 'error'>('details');
+  const [checkoutStep, setCheckoutStep] = useState<'processing' | 'success' | 'error'>('processing');
   const [checkoutProgress, setCheckoutProgress] = useState(0);
   const [checkoutMessage, setCheckoutMessage] = useState('');
   const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>(null);
@@ -6703,44 +6628,25 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
 
   const isAdmin = user?.email === 'asartist20@gmail.com' || userProfile?.isAdmin === true;
 
-  const executePayment = async () => {
+  const executePayment = async (targetPlan?: any) => {
+    const planToUse = targetPlan || selectedPlanForCheckout;
+    if (!planToUse) return;
+
     if (!user) {
-      setCheckoutStep('error');
-      setCheckoutMessage("Please sign in first to upgrade your frequency.");
+      if (onToast) {
+        onToast({
+          id: `auth-err-${Date.now()}`,
+          title: "Alignment Interrupted",
+          body: "Please sign in first to upgrade your frequency."
+        });
+      }
       return;
     }
 
     setIsVerifying(true);
-    setCheckoutStep('processing');
-    setCheckoutProgress(15);
-    setCheckoutMessage('Initializing secure gateway tunnel...');
+    setSelectedPlanForCheckout(planToUse);
 
     try {
-      // ADMIN BYPASS
-      if (isAdmin) {
-        setCheckoutProgress(50);
-        setCheckoutMessage('Admin authority detected. Bypassing gateway...');
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        const expiry = new Date();
-        expiry.setFullYear(expiry.getFullYear() + 100);
-
-        if (!user.isGuest) {
-          await updateDoc(doc(db, 'users', user.uid), {
-            tier: selectedPlanForCheckout.name,
-            subscriptionExpiry: Timestamp.fromDate(expiry),
-            updatedAt: serverTimestamp()
-          });
-        }
-        
-        setCheckoutProgress(100);
-        setCheckoutStep('success');
-        confetti();
-        playKachingSound();
-        setIsVerifying(false);
-        return;
-      }
-
       // Fetch public key ID from safe backend endpoint
       const keyRes = await fetch('/api/config/razorpay-key');
       const keyData = await keyRes.json();
@@ -6749,19 +6655,13 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
       if (!razorpayKeyIdFromApi) {
         throw new Error("Razorpay API Key is missing on the server. Please add RAZORPAY_KEY_ID to Environment Variables in Settings.");
       }
-
-      setCheckoutProgress(30);
-      setCheckoutMessage('Loading secure payment gateway script...');
       
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
         throw new Error("Failed to load Razorpay dynamic payment client. Check network connection.");
       }
 
-      setCheckoutProgress(45);
-      setCheckoutMessage('Opening order port with Razorpay API...');
-
-      const inrAmount = getInrPrice(selectedPlanForCheckout.name);
+      const inrAmount = getInrPrice(planToUse.name);
       const orderRes = await fetch('/api/razorpay/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -6769,7 +6669,7 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
           amount: inrAmount,
           currency: 'INR',
           receipt: `rcpt_${user.uid.slice(-10)}_${Date.now().toString().slice(-10)}`,
-          planName: selectedPlanForCheckout.name,
+          planName: planToUse.name,
           billingCycle: billingCycle,
           userId: user.uid,
           userEmail: user.email,
@@ -6787,28 +6687,21 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
       const rzpOrder = await orderRes.json();
       
       if (rzpOrder.paymentLinkUrl) {
-        setCheckoutProgress(100);
-        setCheckoutMessage('Redirecting to secure abundance portal...');
         window.location.href = rzpOrder.paymentLinkUrl;
         return;
       }
-
-      setCheckoutProgress(60);
-      setCheckoutMessage('Awaiting alignment in secure checkout popup...');
 
       const options = {
         key: razorpayKeyIdFromApi,
         amount: rzpOrder.amount,
         currency: rzpOrder.currency,
-        name: "VIBE OS",
-        description: `${selectedPlanForCheckout.name} [${billingCycle}] Activation`,
-        image: "https://ais-dev-j7sihoqk5j4nphix4bieyo-51389356776.asia-southeast1.run.app/vite.svg", 
+        name: "MENIFESTOS",
+        description: `${planToUse.name} [${billingCycle}] Activation`,
+        image: "/vite.svg", 
         order_id: rzpOrder.id,
         handler: async (response: any) => {
           try {
-            setCheckoutStep('processing');
-            setCheckoutProgress(75);
-            setCheckoutMessage('Verifying digital signature...');
+            setIsVerifying(true);
 
             const verifyRes = await fetch('/api/razorpay/verify-payment', {
               method: 'POST',
@@ -6825,9 +6718,6 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
               throw new Error(verifyErr.message || "Signature verification failed.");
             }
 
-            setCheckoutProgress(95);
-            setCheckoutMessage('Sealing stardust ledger...');
-
             const expiry = new Date();
             if (billingCycle === 'monthly') expiry.setMonth(expiry.getMonth() + 1);
             else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
@@ -6835,11 +6725,11 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
 
             if (user.isGuest) {
               if (updateOfflineProfile) {
-                updateOfflineProfile(selectedPlanForCheckout.name, expiry);
+                updateOfflineProfile(planToUse.name, expiry);
               }
             } else {
               await updateDoc(doc(db, 'users', user.uid), {
-                tier: selectedPlanForCheckout.name,
+                tier: planToUse.name,
                 subscriptionExpiry: Timestamp.fromDate(expiry),
                 updatedAt: serverTimestamp()
               });
@@ -6848,8 +6738,8 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
                 await addDoc(collection(db, 'transactions'), {
                   type: 'income',
                   amount: inrAmount,
-                  label: user.displayName || user.email || 'Vibe Seeker',
-                  category: `${selectedPlanForCheckout.name} Activation [${billingCycle}]`,
+                  label: user.displayName || user.email || 'Menifest Seeker',
+                  category: `${planToUse.name} Activation [${billingCycle}]`,
                   ownerId: user.uid,
                   timestamp: serverTimestamp()
                 });
@@ -6861,15 +6751,27 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
             try {
               confetti();
               playKachingSound();
-            } catch (e) {}
+            } catch (soundErr) {}
 
-            setCheckoutProgress(100);
-            setCheckoutStep('success');
             setIsVerifying(false);
+            
+            if (onToast) {
+              onToast({
+                id: `upgrade-success-${Date.now()}`,
+                title: "VIBRATIONAL ASCENSION ACTIVE",
+                body: `Your matrix has ascended to ${planToUse.name} successfully. All limits are dissolved!`
+              });
+            }
           } catch (hErr: any) {
             console.error(hErr);
-            setCheckoutStep('error');
-            setCheckoutMessage(hErr.message || "Failed during payment verification.");
+            setIsVerifying(false);
+            if (onToast) {
+              onToast({
+                id: `verify-err-${Date.now()}`,
+                title: "Verification Failed",
+                body: hErr.message || "Failed during payment verification."
+              });
+            }
           }
         },
         prefill: {
@@ -6878,15 +6780,14 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
         },
         notes: {
           userId: user.uid,
-          tier: selectedPlanForCheckout.name,
+          tier: planToUse.name,
           billingCycle: billingCycle
         },
         theme: {
-          color: "#3371FF",
+          color: "#10B981",
         },
         modal: {
           ondismiss: () => {
-            setCheckoutStep('details');
             setIsVerifying(false);
             if (onToast) {
               onToast({
@@ -6902,16 +6803,27 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
       const razorpayInstance = new (window as any).Razorpay(options);
       razorpayInstance.on('payment.failed', function (response: any) {
         console.error("Razorpay Payment Failed:", response.error);
-        setCheckoutStep('error');
-        setCheckoutMessage(`Gateway Error: ${response.error.description}`);
         setIsVerifying(false);
+        if (onToast) {
+          onToast({
+            id: `pay-failed-${Date.now()}`,
+            title: "Gateway Error",
+            body: `Payment failed: ${response.error.description}`
+          });
+        }
       });
+      setIsVerifying(false);
       razorpayInstance.open();
     } catch (err: any) {
       setIsVerifying(false);
       console.error(err);
-      setCheckoutStep('error');
-      setCheckoutMessage(err.message || 'Sub-frequency transaction failure. Please retry.');
+      if (onToast) {
+        onToast({
+          id: `overall-err-${Date.now()}`,
+          title: "Alignment Interrupted",
+          body: err.message || 'Sub-frequency transaction failure. Please retry.'
+        });
+      }
     }
   };
 
@@ -6946,21 +6858,36 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-1.5 mb-2">
             {[...Array(5)].map((_, i) => (
-              <Star key={i} className="w-3 h-3 fill-emerald-500 text-emerald-500" />
+              <Star key={i} className="w-3.5 h-3.5 fill-emerald-400 text-emerald-400" />
             ))}
-            <span className="text-[8px] font-black text-emerald-400 uppercase tracking-[0.2em] ml-2">Verified by 12,400+ Performers</span>
+            <span className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.22em] ml-2 font-mono">Verified by 12,400+ Elite Performers</span>
           </div>
-          <h2 className="text-3xl lg:text-4xl font-black tracking-tighter text-white uppercase italic leading-none">
-            Master Your <span className="text-emerald-400 underline decoration-emerald-500/30 underline-offset-8">Evolution.</span>
+          <h2 className="text-4xl lg:text-5xl font-black tracking-tight text-white uppercase italic leading-none">
+            Master Your <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-200 bg-clip-text text-transparent underline decoration-emerald-400/20 underline-offset-12">Evolution.</span>
           </h2>
           <p className="text-stardust/30 text-[9px] font-bold uppercase tracking-[0.4em] italic pt-2">
-            Synchronization Level Activated
+            SUBLIME FREQUENCY INTEGRATION
           </p>
         </div>
 
         {/* Dynamic Trust Infrastructure */}
-        <div className="flex flex-wrap items-center justify-center gap-3 mt-2 mb-2">
-          <div className="flex bg-white/[0.03] p-1.5 rounded-2xl border border-white/10 shadow-inner backdrop-blur-xl">
+        <div className="flex flex-col items-center justify-center gap-3 mt-2 mb-2">
+          
+          <div className="bg-rose-500/10 border border-rose-500/30 text-rose-400 px-4 py-2.5 rounded-2xl max-w-lg text-center shadow-[0_0_20px_rgba(244,63,94,0.15)] flex flex-col items-center gap-1">
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] italic flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              </span>
+              Limited 1-Month Offer
+            </span>
+            <span className="text-xs sm:text-sm font-bold text-white/90">
+              Prices increase significantly next month. Lifetime tier will be permanently removed. Secure this rate forever.
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-3 mt-1">
+            <div className="flex bg-white/[0.03] p-1.5 rounded-2xl border border-white/10 shadow-inner backdrop-blur-xl">
              {[
                { id: 'monthly', label: 'Monthly' },
                { id: 'yearly', label: 'Yearly' },
@@ -6969,89 +6896,120 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
                <button
                  key={cycle.id}
                  onClick={() => setBillingCycle(cycle.id as any)}
-                 className={`relative px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-500 ${billingCycle === cycle.id ? 'bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)]' : 'text-stardust/40 hover:text-white'}`}
+                 className={`relative px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-500 cursor-pointer ${billingCycle === cycle.id ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-black shadow-[0_4px_20px_rgba(16,185,129,0.25)] font-black' : 'text-stardust/40 hover:text-white'}`}
                >
                  {cycle.label}
-                 {cycle.id === 'yearly' && billingCycle !== cycle.id && <span className="absolute -top-1.5 -right-1 px-2 py-0.5 bg-emerald-500 text-black text-[6px] font-black rounded-full border border-emerald-500 shadow-lg">SAVE 30%</span>}
+                 {cycle.id === 'yearly' && billingCycle !== cycle.id && <span className="absolute -top-1.5 -right-1 px-2 py-0.5 bg-emerald-500 text-black text-[6px] font-black rounded-full shadow-lg">SAVE 30%</span>}
                </button>
              ))}
           </div>
-
         </div>
-
-        {/* Primary Pricing Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto w-full relative z-10 px-4 md:px-0">
           {plans.map((plan, i) => {
             const isRecommended = plan.recommended;
             return (
               <motion.div
                 key={plan.name}
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 25 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: i * 0.1 }}
-                className={`relative p-8 rounded-[2.5rem] border flex flex-col group transition-all duration-700 ${
+                transition={{ duration: 0.7, delay: i * 0.15 }}
+                onClick={() => {
+                  if (plan.isPremium && !isVerifying) {
+                    executePayment(plan);
+                  }
+                }}
+                className={`relative p-8 sm:p-10 rounded-[2.5rem] border flex flex-col select-none cursor-pointer transition-all duration-500 bg-white ${
                   isRecommended 
-                    ? 'bg-emerald-500/[0.03] border-emerald-500/50 shadow-[0_0_80px_rgba(16,185,129,0.08)]' 
-                    : 'bg-white/[0.01] border-white/10'
+                    ? 'border-emerald-400/80 shadow-[0_24px_60px_rgba(16,185,129,0.06),_0_0_1px_rgba(16,185,129,0.25)] hover:border-emerald-500 hover:scale-[1.01] active:scale-[0.99] border-2 ring-4 ring-emerald-400/5' 
+                    : 'border-slate-200/80 shadow-[0_20px_50px_rgba(0,0,0,0.03)] hover:border-slate-400/40 hover:scale-[1.01] active:scale-[0.99] border'
                 }`}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className={`text-lg font-black uppercase italic tracking-tighter ${isRecommended ? 'text-emerald-400' : 'text-white'}`}>
-                    {plan.name} Pathway
+                {/* Premium badge at the top right of the recommended path */}
+                {isRecommended && (
+                  <div className="absolute top-4 right-8 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[7.5px] font-black uppercase tracking-[0.25em] py-1.5 px-4 rounded-full italic shadow-md">
+                    👑 MASTER TIER
+                  </div>
+                )}
+
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className={`text-[8.5px] font-black uppercase tracking-[0.35em] font-mono ${isRecommended ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      {isRecommended ? 'Sovereign Path Expansion' : 'Baseline Frequency Path'}
+                    </span>
+                  </div>
+                  <h3 className="text-3xl font-black uppercase tracking-tight text-slate-900 font-sans italic">
+                    {plan.name} <span className={isRecommended ? "text-emerald-500" : "text-slate-500"}>Pathway</span>
                   </h3>
-                  {isRecommended && (
-                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500 text-black text-[7px] font-black uppercase tracking-[0.2em] italic shadow-emerald-400/20 shadow-lg">
-                      <Zap className="w-3 h-3 fill-black" /> Optimal Path
-                    </div>
-                  )}
-                </div>
-                
-                <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-3xl lg:text-5xl font-black text-white italic tracking-tighter">
-                    {currencySymbol}{plan.price}
-                  </span>
-                  <span className="text-stardust/20 font-bold text-[9px] uppercase tracking-widest italic pt-2">
-                    {plan.name === 'Novice' ? 'unlimited' : billingCycle === 'lifetime' ? 'once' : `/ ${billingCycle.slice(0, 3)}`}
-                  </span>
                 </div>
 
-                <div className="space-y-2 mb-6 flex-grow py-4 border-t border-white/5">
-                  {plan.features.slice(0, 5).map(feature => (
-                    <div key={feature} className="flex items-center gap-3 text-[9px] font-black text-white/50 uppercase tracking-widest group-hover:text-white/80 transition-all">
-                      <div className={`w-4 h-4 rounded-md flex items-center justify-center border ${isRecommended ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-white/5 border-white/10'}`}>
-                        <Check className={`w-2.5 h-2.5 ${isRecommended ? 'text-emerald-400 shadow-xl' : 'text-stardust/20'}`} />
+                <p className="text-[11.5px] font-medium tracking-wide text-slate-500 leading-relaxed mb-6 font-sans">
+                  {plan.description}
+                </p>
+                
+                {/* Price Display */}
+                <div className={`rounded-2xl p-5 mb-6 border flex items-baseline justify-between transition-all duration-300 ${
+                  isRecommended 
+                    ? 'bg-emerald-50/40 border-emerald-100' 
+                    : 'bg-slate-50 border-slate-100'
+                }`}>
+                  <div>
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block mb-0.5 font-mono">ENERGY COST</span>
+                    <span className="text-4xl lg:text-5xl font-black tracking-tighter text-slate-950 font-sans">
+                      {currencySymbol}{plan.price}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className={`font-mono text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md shadow-sm ${
+                      isRecommended 
+                        ? 'bg-emerald-500/15 text-emerald-800' 
+                        : 'bg-slate-200/50 text-slate-700'
+                    }`}>
+                      {plan.name === 'Novice' ? 'Unlimited Access' : billingCycle === 'lifetime' ? 'One-Time Only' : `${billingCycle}`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Features Checklist */}
+                <div className="space-y-3 mb-8 flex-grow py-4 border-t border-slate-100">
+                  <span className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-400 block mb-3 font-mono">Inclusions</span>
+                  {plan.features.map(feature => (
+                    <div key={feature} className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-slate-700 transition-all">
+                      <div className={`w-5 h-5 rounded-lg flex items-center justify-center border transition-all ${
+                        isRecommended 
+                          ? 'bg-emerald-50 border-emerald-200' 
+                          : 'bg-slate-50 border-slate-100'
+                      }`}>
+                        <Check className={`w-3 h-3 stroke-[3] ${
+                          isRecommended ? 'text-emerald-500' : 'text-slate-400'
+                        }`} />
                       </div>
                       <span className="truncate">{feature}</span>
                     </div>
                   ))}
                 </div>
 
+                {/* Action button */}
                 {plan.isPremium ? (
                   <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    whileHover={{ scale: 1.015 }}
+                    whileTap={{ scale: 0.985 }}
                     disabled={isVerifying}
-                    onClick={() => {
-                      setSelectedPlanForCheckout(plan);
-                      setCheckoutStep('details');
-                      setCheckoutProgress(0);
-                      setShowCheckoutModal(true);
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      executePayment(plan);
                     }}
-                    className={`w-full py-4 rounded-2xl font-black uppercase text-[11px] tracking-[0.4em] transition-all flex items-center justify-center gap-3 italic cursor-pointer shadow-2xl ${
-                      isRecommended 
-                        ? 'bg-emerald-500 text-white hover:bg-emerald-400 shadow-emerald-500/20' 
-                        : 'bg-white text-black hover:bg-stardust shadow-white/5'
-                    }`}
+                    className="w-full py-4 rounded-2xl font-black uppercase text-[11px] tracking-[0.4em] transition-all flex items-center justify-center gap-3 italic cursor-pointer shadow-[0_12px_24px_rgba(16,185,129,0.2)] bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-white hover:brightness-105 duration-300"
                   >
                     {isVerifying ? (
-                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
-                      <>Initiate Access <ArrowRight className="w-4 h-4" /></>
+                      <>Initiate Access <ArrowRight className="w-4 h-4 animate-pulse text-white" /></>
                     )}
                   </motion.button>
                 ) : (
-                  <div className="w-full py-4 rounded-2xl border border-white/5 bg-white/[0.01] text-stardust/10 text-[9px] font-black uppercase tracking-[0.5em] italic text-center grayscale">
-                     Baseline Integration
+                  <div className="w-full py-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] italic text-center shadow-inner">
+                     Active Baseline Path
                   </div>
                 )}
               </motion.div>
@@ -7060,9 +7018,9 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
         </div>
 
         {/* Scroll Call-to-Action */}
-        <div className="flex flex-col items-center mt-8 animate-bounce opacity-20">
+        <div className="flex flex-col items-center mt-8 animate-bounce opacity-25">
           <span className="text-[7px] font-black text-white uppercase tracking-[0.6em] mb-2 italic">Evidence Below</span>
-          <ChevronDown className="w-4 h-4 text-emerald-400" />
+          <ChevronDown className="w-4 h-4 text-emerald-500" />
         </div>
       </div>
 
@@ -7155,8 +7113,8 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
               {
-                q: "What exactly is Vibe OS?",
-                a: "Vibe OS is an operating system for your reality. It combines habit tracking, vision boarding, and wealth management into a single, high-frequency interface designed to help you manifest your goals through consistent rituals."
+                q: "What exactly is MenifestOS?",
+                a: "MenifestOS is an operating system for your reality. It combines habit tracking, vision boarding, and wealth management into a single, high-frequency interface designed to help you manifest your goals through consistent rituals."
               },
               {
                 q: "How does the Ritual Engine help?",
@@ -7220,210 +7178,5 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   );
 
 
-  const pricingPortalContent = (
-    <>
-      {pricingContent}
-
-      {/* Modern, High-Fidelity Custom Checkout Modal */}
-      <AnimatePresence>
-        {showCheckoutModal && selectedPlanForCheckout && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            {/* Modal Backdrop */}
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => {
-                if (checkoutStep !== 'processing') {
-                  setShowCheckoutModal(false);
-                }
-              }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-md"
-            />
-
-            {/* Modal Body */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-[95%] sm:max-w-md bg-[#0a0d0e] border border-emerald-500/20 rounded-[2.5rem] p-6 sm:p-8 text-stardust z-10 overflow-y-auto max-h-[90vh] shadow-[0_0_50px_rgba(16,185,129,0.15)] flex flex-col no-scrollbar"
-            >
-              {/* Outer Decorative Nebula Grid */}
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-
-              {/* Header */}
-              <div className="flex items-center justify-between mb-6 relative z-10">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                    <Sparkles className="w-5 h-5 text-emerald-400" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-wider text-white italic">Abundance Portal</h3>
-                    <p className="text-[8px] font-bold text-stardust/40 uppercase tracking-widest font-mono">Realignment</p>
-                  </div>
-                </div>
-                {checkoutStep !== 'processing' && (
-                  <button 
-                    onClick={() => setShowCheckoutModal(false)}
-                    className="w-8 h-8 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors flex items-center justify-center"
-                  >
-                    <X className="w-4 h-4 text-white hover:text-emerald-400" />
-                  </button>
-                )}
-              </div>
-
-              {/* Main Steps Content */}
-              <AnimatePresence mode="wait">
-                {checkoutStep === 'details' && (
-                  <motion.div 
-                    key="details"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    className="space-y-6 relative z-10 text-left"
-                  >
-                    {/* Selected Plan Details Card */}
-                    <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 flex items-center justify-between">
-                      <div>
-                        <span className="text-[8px] font-black uppercase tracking-[0.3em] text-emerald-400 block mb-0.5">Frequency plan</span>
-                        <span className="text-sm font-black uppercase text-white italic">{selectedPlanForCheckout.name} Activation</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[8px] font-black uppercase tracking-[0.3em] text-stardust/40 block mb-0.5">{billingCycle} energy exchange</span>
-                        <span className="text-base font-black text-white italic">
-                          {currencySymbol}{getPrice(selectedPlanForCheckout.name)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Dynamic Checkout Action */}
-                    <div className="space-y-4 py-4">
-                      <motion.button
-                        whileHover={{ scale: 1.02, boxShadow: '0 10px 30px rgba(51,113,255,0.3)' }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={executePayment}
-                        className="w-full py-4 rounded-xl font-black uppercase text-[11px] tracking-[0.3em] bg-[#3371FF] text-white shadow-2xl hover:bg-[#285cd9] transition-all italic flex items-center justify-center gap-3 active:scale-95"
-                      >
-                        <img src="https://razorpay.com/favicon.png" className="w-5 h-5 invert brightness-0" alt="RZP" />
-                        {isAdmin ? 'Admin Quick Activate' : 'Pay with Razorpay'}
-                      </motion.button>
-
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-[7.5px] font-black uppercase tracking-widest text-stardust/40">Secure Razorpay Encryption Active</span>
-                        </div>
-                        <p className="text-[7.5px] text-stardust/10 leading-normal uppercase font-black text-center px-10">
-                          Authorized by Razorpay®. Direct redirection to secure verification page.
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {checkoutStep === 'processing' && (
-                  <motion.div 
-                    key="processing"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="py-12 flex flex-col items-center justify-center space-y-6 relative z-10 text-center"
-                  >
-                    {/* Animated Progress Radial Indicator */}
-                    <div className="relative w-24 h-24 flex items-center justify-center">
-                      <div className="absolute inset-0 rounded-full border-4 border-white/5" />
-                      <div className="absolute inset-x-0 inset-y-0 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin" />
-                      <span className="text-xs font-black text-white italic">{checkoutProgress}%</span>
-                    </div>
-
-                    <div className="text-center space-y-2">
-                      <h4 className="text-xs font-black uppercase text-emerald-400 italic tracking-[0.22em] animate-pulse">Upgrading Vibration...</h4>
-                      <p className="text-[9px] font-black text-stardust/40 uppercase tracking-widest max-w-[240px] leading-relaxed mx-auto">
-                        {checkoutMessage}
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-
-                {checkoutStep === 'success' && (
-                  <motion.div 
-                    key="success"
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="py-8 flex flex-col items-center justify-center space-y-6 relative z-10 text-center"
-                  >
-                    {/* Animated check bubble */}
-                    <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.3)] animate-pulse">
-                      <CheckCircle2 className="w-8 h-8" />
-                    </div>
-
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-black uppercase text-white italic tracking-[0.15em]">ALIGNMENT SEALED!</h4>
-                      <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest max-w-[280px] leading-relaxed mx-auto">
-                        Your energetic matrix has ascended to {selectedPlanForCheckout.name} successfully.
-                      </p>
-                      <p className="text-[8px] font-medium text-stardust/40 uppercase tracking-[0.2em] leading-normal pt-2">
-                        ALL LIMITS DISSOLVED. RITUALS SYNCED.
-                      </p>
-                    </div>
-
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => {
-                        setShowCheckoutModal(false);
-                        setView('dashboard');
-                      }}
-                      className="w-full py-4 rounded-xl font-black uppercase text-[9px] tracking-[0.3em] bg-white text-black hover:bg-emerald-400 hover:text-white hover:border-emerald-500 transition-all italic flex items-center justify-center gap-2"
-                    >
-                      Enter Sovereign Portal <ArrowRight className="w-4 h-4" />
-                    </motion.button>
-                  </motion.div>
-                )}
-
-                {checkoutStep === 'error' && (
-                  <motion.div 
-                    key="error"
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="py-8 flex flex-col items-center justify-center space-y-6 relative z-10 text-center font-bold"
-                  >
-                    <div className="w-16 h-16 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mx-auto">
-                      <X className="w-8 h-8" />
-                    </div>
-
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-black uppercase text-rose-400 italic tracking-[0.15em]">ALIGNMENT INTERRUPTED</h4>
-                      <p className="text-[10px] font-medium text-stardust/60 leading-relaxed max-w-[280px] mx-auto uppercase tracking-wider">
-                        {checkoutMessage}
-                      </p>
-                    </div>
-
-                    <div className="flex gap-2 w-full">
-                      <button
-                        onClick={() => setCheckoutStep('details')}
-                        className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl font-black uppercase text-[9px] tracking-widest text-white hover:bg-white/10 transition-colors"
-                      >
-                        Adjust Details
-                      </button>
-                      <button
-                        onClick={() => setShowCheckoutModal(false)}
-                        className="flex-1 py-3 bg-white text-black rounded-xl font-black uppercase text-[9px] tracking-widest hover:bg-stardust transition-colors"
-                      >
-                        Cancel Portal
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </>
-  );
-
-  return pricingPortalContent;
+  return pricingContent;
 };
