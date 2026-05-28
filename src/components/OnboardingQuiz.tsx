@@ -38,75 +38,133 @@ export const OnboardingQuiz = ({ user, onComplete }: OnboardingQuizProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<{ rituals: SuggestedRitual[], affirmation: string } | null>(null);
   const [selectedRituals, setSelectedRituals] = useState<number[]>([]);
+  
+  // High-performance progression loading indicators for cosmic calibration
+  const [calibrationProgress, setCalibrationProgress] = useState(0);
+  const [calibrationMessage, setCalibrationMessage] = useState('');
+
+  const generateDynamicRituals = (goalText: string, challengesText: string) => {
+    const goalVal = goalText.trim();
+    const rawChallenges = challengesText.trim();
+    const challengesVal = rawChallenges || "distraction and busy narrative loops";
+    
+    const lowerGoal = goalVal.toLowerCase();
+    
+    // Choose core focused category
+    let category = 'Personal';
+    if (lowerGoal.match(/(wealth|money|financial|abundance|income|cash|dollar|rupee|invest|million|billion|rich|affluence)/)) {
+      category = 'Wealth';
+    } else if (lowerGoal.match(/(job|career|salary|recruit|hire|work|business|startup|promotion|productivity|focus)/)) {
+      category = 'Career';
+    } else if (lowerGoal.match(/(health|body|gym|fitness|diet|disease|cure|sick|muscle|sleep|weight|run|energy|nutrition|somatic)/)) {
+      category = 'Health';
+    } else if (lowerGoal.match(/(love|relationship|date|friend|family|partner|marriage|romance|connection)/)) {
+      category = 'Personal';
+    }
+
+    const goalSummary = goalVal.length > 40 ? goalVal.substring(0, 38) + "..." : goalVal;
+    
+    const rituals: SuggestedRitual[] = [
+      {
+        name: `Core ${category} Visualization`,
+        description: `Sit comfortably and visualize your goal: "${goalSummary}". Retain this image clearly for 5 minutes, focusing on the relief and joy of its physical manifestation. Let any blockages related to "${challengesVal}" dissolve completely.`,
+        reminderTime: "08:15",
+        category: category,
+        frequency: "Daily"
+      },
+      {
+        name: `Decisive Action Vector`,
+        description: `Perform one high-impact, intentional choice today that directly advances you toward "${goalSummary}". Focus fully on this primary action with absolute momentum, ignoring all other minor demands.`,
+        reminderTime: "11:00",
+        category: category,
+        frequency: "Daily"
+      },
+      {
+        name: `Subconscious Grid Scripting`,
+        description: `Write down your central declaration 3 times in a notepad or journal in positive present-tense: "I am fully aligned with ${goalSummary}." Breathe in the feeling of success as you script.`,
+        reminderTime: "21:30",
+        category: category,
+        frequency: "Daily"
+      }
+    ];
+
+    let affirmation = `I am a deliberate co-creator of my reality. My core frequency is synchronized with "${goalSummary}", allowing manifestation with complete ease.`;
+    if (category === 'Wealth') {
+      affirmation = `Unbounded financial abundance is my natural state of alignment. I open the valves of prosperity and accept "${goalSummary}" into my reality.`;
+    } else if (category === 'Career') {
+      affirmation = `My actions are structured, purposeful, and clear. Every day, I move closer to "${goalSummary}" with flawless, effortless focus.`;
+    } else if (category === 'Health') {
+      affirmation = `My bodily container resides in perfect cellular vibrance and strength. I honor my physical vessel and nurture it towards "${goalSummary}".`;
+    }
+
+    return { rituals, affirmation };
+  };
 
   const handleManifest = async () => {
     if (!goal) return;
     setIsLoading(true);
-    try {
-      const response = await fetch('/api/gemini/manifest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ goal, currentChallenges: challenges })
+    setStep(4); // Trigger the "Holographic Resonance Calibration" screen step!
+    setCalibrationProgress(0);
+    setCalibrationMessage('Connecting to sub-quantum frequency fields...');
+
+    let resolvedSuggestions: { rituals: SuggestedRitual[], affirmation: string } | null = null;
+    let apiCompleted = false;
+
+    // Trigger API call concurrently to keep it dynamic, but do not block UX!
+    fetch('/api/gemini/manifest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ goal, currentChallenges: challenges })
+    })
+      .then(async (response) => {
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Array.isArray(data.rituals)) {
+            resolvedSuggestions = data;
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn("API calibration failed, switching to dynamic client-side resonance parsing.", err);
+      })
+      .finally(() => {
+        apiCompleted = true;
       });
-      if (!response.ok) {
-        throw new Error(`API returned status ${response.status}`);
-      }
-      const data = await response.json();
-      if (!data || !Array.isArray(data.rituals)) {
-        throw new Error("Invalid format returned by AI route");
-      }
-      setSuggestions(data);
-      setSelectedRituals(data.rituals.map((_: any, i: number) => i)); // Select all by default
-      setStep(3);
-    } catch (error) {
-      console.warn("API energy calibration failed, switching to dynamic localized resonance mapping:", error);
+
+    const messages = [
+      'Scanning primary intention vectors...',
+      'Opening energetic calibration chambers...',
+      'Dissolving localized frequency friction...',
+      'Synthesizing 3 custom high-frequency rituals...',
+      'Harmonizing affirmation resonance...'
+    ];
+
+    let currentProgress = 0;
+    const intervalTime = 16; // 60 FPS update
+    const speed = 1.8; // Takes about 900ms to load fully
+
+    const timer = setInterval(() => {
+      currentProgress += speed + Math.random() * 1.2;
       
-      // Resilient client-side fallback generator based on category patterns
-      const lowerGoal = goal.toLowerCase();
-      let derivedCategory = 'Personal';
-      let rituals: SuggestedRitual[] = [];
-      let affirmation = '';
+      if (currentProgress >= 100) {
+        currentProgress = 100;
+        clearInterval(timer);
+        
+        // If API wasn't successful or hasn't finished, generate beautiful customized localized rituals instantly!
+        if (!resolvedSuggestions) {
+          resolvedSuggestions = generateDynamicRituals(goal, challenges);
+        }
 
-      if (lowerGoal.includes('wealth') || lowerGoal.includes('money') || lowerGoal.includes('financial') || lowerGoal.includes('abundance') || lowerGoal.includes('income') || lowerGoal.includes('million') || lowerGoal.includes('business')) {
-        derivedCategory = 'Wealth';
-        rituals = [
-          { name: "Daily Abundance Audit", description: "Review and list every single active source of financial value and positive flow around you.", reminderTime: "08:30", category: "Wealth", frequency: "Daily" },
-          { name: "Prosperity Anchor Meditation", description: "Spend 5 minutes visualizing the absolute fulfillment of your wealth target with deep emotional gratitude.", reminderTime: "09:00", category: "Wealth", frequency: "Daily" },
-          { name: "Gratitude Scripting Log", description: "Write down your financial declarations 3 times in the positive present-tense form to imprint the sub-conscious.", reminderTime: "21:00", category: "Wealth", frequency: "Daily" }
-        ];
-        affirmation = "Money is energy that responds to my clarity. I am fully synchronized with the magnetic field of absolute prosperity.";
-      } else if (lowerGoal.includes('health') || lowerGoal.includes('body') || lowerGoal.includes('gym') || lowerGoal.includes('fitness') || lowerGoal.includes('diet') || lowerGoal.includes('disease') || lowerGoal.includes('cure')) {
-        derivedCategory = 'Health';
-        rituals = [
-          { name: "Somatic Breathwork Calibration", description: "Perform 4 cycles of diaphragmatic box breathing to release stress levels and center your physical energy.", reminderTime: "07:00", category: "Health", frequency: "Daily" },
-          { name: "Structured Hydration Aura", description: "Drink vitalizing structures of water with active conscious gratitude of your flawless, glowing cellular energy.", reminderTime: "08:00", category: "Health", frequency: "Daily" },
-          { name: "Vessel Grounding Ritual", description: "Engage in physical somatic movement that anchors your cosmic consciousness inside the present physical form.", reminderTime: "22:00", category: "Health", frequency: "Daily" }
-        ];
-        affirmation = "My vessel is a temple of pure life force. Absolute health and youthful cellular vigor circulate through me now.";
-      } else if (lowerGoal.includes('career') || lowerGoal.includes('work') || lowerGoal.includes('performance') || lowerGoal.includes('productivity') || lowerGoal.includes('focus') || lowerGoal.includes('job') || lowerGoal.includes('promotion')) {
-        derivedCategory = 'Career';
-        rituals = [
-          { name: "Outcome Prioritization Vector", description: "Structure your three highest-leverage intentions of the day clearly before reading notification feeds.", reminderTime: "09:00", category: "Career", frequency: "Daily" },
-          { name: "Deep Work Flow Block", description: "Dedicate 90 minutes of continuous flow action with zero visual distraction, phone, or internet resistance.", reminderTime: "11:30", category: "Career", frequency: "Daily" },
-          { name: "Vibe Calibration Reflection", description: "Conduct a brief end-of-day audit to acknowledge blockages and consciously release stored working tension.", reminderTime: "18:00", category: "Career", frequency: "Daily" }
-        ];
-        affirmation = "My efforts are guided by pure, flawless alignment. I accomplish complex breakthroughs with joyful, effortless velocity.";
+        setSuggestions(resolvedSuggestions);
+        setSelectedRituals(resolvedSuggestions.rituals.map((_, i) => i));
+        setIsLoading(false);
+        setStep(3); // Go directly to suggested rituals card view
       } else {
-        // Universal spiritual alignment
-        rituals = [
-          { name: "Silent Mindscape Meditations", description: "Rest your attention in pure universal silence. Let go of all physical narratives and earthly labels.", reminderTime: "06:30", category: "Personal", frequency: "Daily" },
-          { name: "Infinite Resonance Transmission", description: "Silently project pure wishes of harmony, health, and prosperity to three separate, random souls today.", reminderTime: "12:00", category: "Personal", frequency: "Daily" },
-          { name: "Aura Integration Scan", description: "Vibrate on the lessons of today. Re-balance your spiritual boundaries and set coordinates for profound, healing sleep.", reminderTime: "21:30", category: "Personal", frequency: "Daily" }
-        ];
-        affirmation = "I am a co-creator of this universe. My intent is pristine, and my space is aligned with eternal cosmic harmony.";
+        setCalibrationProgress(Math.floor(currentProgress));
+        const index = Math.min(messages.length - 1, Math.floor((currentProgress / 100) * messages.length));
+        setCalibrationMessage(messages[index]);
       }
-
-      setSuggestions({ rituals, affirmation });
-      setSelectedRituals(rituals.map((_, i) => i));
-      setStep(3);
-    } finally {
-      setIsLoading(false);
-    }
+    }, intervalTime);
   };
 
   const finalizeOnboarding = async () => {
@@ -281,13 +339,18 @@ export const OnboardingQuiz = ({ user, onComplete }: OnboardingQuizProps) => {
             exit={{ opacity: 0, scale: 1.05 }}
             className="w-full max-w-xl bg-cosmic-void/90 border border-white/10 rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-10 relative overflow-hidden backdrop-blur-xl shadow-2xl my-auto"
           >
-            <div className="relative z-10">
-              <button 
-                onClick={() => setStep(1)}
-                className="absolute top-0 right-0 text-stardust/40 hover:text-white transition-colors p-2 flex items-center gap-1 font-mono text-[9px] font-black uppercase tracking-widest"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" /> Back
-              </button>
+            <div className="relative z-10 animate-fade-in">
+              <div className="flex justify-between items-center mb-6 sm:mb-8">
+                <button 
+                  onClick={() => setStep(1)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-white/5 hover:bg-white/15 text-white/60 hover:text-white text-[10px] font-black uppercase tracking-widest border border-white/5 transition-all cursor-pointer h-10 select-none touch-manipulation focus:outline-none shrink-0"
+                >
+                  <ChevronLeft className="w-4 h-4 text-emerald-400" /> Back
+                </button>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/25 italic select-none">
+                  Step 2 of 3
+                </div>
+              </div>
               
               <h2 className="text-2xl sm:text-3xl font-black italic tracking-tighter text-white mb-6 sm:mb-8 uppercase">
                 The <span className="text-emerald-400 font-serif">Vision</span>
@@ -323,22 +386,61 @@ export const OnboardingQuiz = ({ user, onComplete }: OnboardingQuizProps) => {
                   <button 
                     type="button"
                     onClick={handleManifest}
-                    disabled={!goal || isLoading}
+                    disabled={!goal}
                     className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white p-4.5 sm:p-5 rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] flex items-center justify-center gap-2.5 disabled:opacity-50 transition-all duration-300 shadow-[0_0_30px_rgba(16,185,129,0.2)] hover:shadow-[0_0_45px_rgba(16,185,129,0.4)] hover:scale-[1.02] active:scale-[0.98] cursor-pointer focus:outline-none"
                   >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="w-4.5 h-4.5 animate-spin" />
-                        <span>Calibrating Aura...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Calibrate Energy</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </>
-                    )}
+                    <span>Calibrate Energy</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {step === 4 && (
+          <motion.div 
+            key="calibrating"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.05 }}
+            className="w-full max-w-xl bg-cosmic-void/90 border border-white/10 rounded-2xl sm:rounded-[2.5rem] p-8 sm:p-12 relative overflow-hidden backdrop-blur-xl shadow-2xl my-auto text-center flex flex-col items-center justify-center min-h-[350px]"
+          >
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-emerald-500/[0.03] to-transparent pointer-events-none" />
+            
+            <div className="relative z-10 w-full flex flex-col items-center">
+              <div className="relative w-24 h-24 sm:w-32 sm:h-32 mb-8 flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full border-2 border-dashed border-emerald-500/20 animate-spin-slow" />
+                <div className="absolute inset-2 rounded-full border border-emerald-500/40 animate-pulse" />
+                <div className="w-4 h-4 rounded-full bg-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.8)] animate-ping" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-sm font-mono font-black text-emerald-400 tracking-wider">
+                    {calibrationProgress}%
+                  </span>
+                </div>
+              </div>
+
+              <h3 className="text-xl sm:text-2xl font-black italic tracking-tighter text-white uppercase mb-3 leading-none">
+                Resonance <span className="text-emerald-400 font-serif">Calibration</span>
+              </h3>
+              
+              <p className="text-stardust/60 text-xs uppercase tracking-widest font-black min-h-[1.5rem] antialiased">
+                {calibrationMessage}
+              </p>
+
+              <div className="w-full max-w-xs h-1.5 bg-white/5 rounded-full mt-6 overflow-hidden p-[1px] border border-white/5 relative">
+                <motion.div 
+                  className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full shadow-[0_0_12px_rgba(52,211,153,0.6)]"
+                  style={{ width: `${calibrationProgress}%` }}
+                />
+              </div>
+
+              <div className="mt-8 flex items-center gap-4 text-[8px] font-mono font-black text-white/20 uppercase tracking-[0.2em] italic">
+                <span>FREQ: 432HZ</span>
+                <span>•</span>
+                <span>VECTOR: ACTIVE</span>
+                <span>•</span>
+                <span>VIBE.OS v2.5</span>
               </div>
             </div>
           </motion.div>
@@ -352,6 +454,18 @@ export const OnboardingQuiz = ({ user, onComplete }: OnboardingQuizProps) => {
             className="w-full max-w-2xl bg-cosmic-void/90 border border-white/10 rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-10 relative overflow-hidden backdrop-blur-xl shadow-2xl my-auto"
           >
             <div className="relative z-10">
+              <div className="flex justify-between items-center mb-6 sm:mb-8">
+                <button 
+                  onClick={() => setStep(2)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-white/5 hover:bg-white/15 text-white/60 hover:text-white text-[10px] font-black uppercase tracking-widest border border-white/5 transition-all cursor-pointer h-10 select-none touch-manipulation focus:outline-none shrink-0 animate-fade-in"
+                >
+                  <ChevronLeft className="w-4 h-4 text-emerald-400" /> Back
+                </button>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/25 italic select-none">
+                  Align Verified
+                </div>
+              </div>
+
               <div className="mb-6 sm:mb-8 text-center">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 text-[9px] font-black uppercase tracking-widest mb-3">
                   <ShieldCheck className="w-3 h-3" /> Alignment Verified
