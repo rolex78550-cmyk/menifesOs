@@ -28,6 +28,45 @@ const ai = new GoogleGenAI({
   }
 });
 
+// Robust fallback and retry wrapper for Gemini generateContent to handle 503/transient rate limits or high-demand errors
+async function generateContentWithFallbackAndRetry(params: {
+  contents: any;
+  config?: any;
+}) {
+  const models = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
+  let lastError: any = null;
+
+  for (const model of models) {
+    let attempts = 2; // Attempt up to 2 times for each model
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        console.log(`[Gemini API] Querying model: ${model} (Attempt ${attempt}/${attempts})`);
+        const response = await ai.models.generateContent({
+          model,
+          contents: params.contents,
+          config: params.config,
+        });
+        if (response && response.text) {
+          console.log(`[Gemini API] Success using model: ${model}`);
+          return response;
+        }
+        throw new Error("Empty response received from model");
+      } catch (error: any) {
+        lastError = error;
+        console.warn(
+          `[Gemini API] Error using model ${model} (Attempt ${attempt}/${attempts}):`,
+          error.message || error
+        );
+        if (attempt < attempts) {
+          // Wait briefly before retrying
+          await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+        }
+      }
+    }
+  }
+  throw lastError || new Error("All Gemini models and retries failed.");
+}
+
 app.use(express.json());
 app.use(cors());
 
@@ -640,8 +679,7 @@ app.post("/api/gemini/manifest", async (req, res) => {
   if (!goal) return res.status(400).json({ error: "What do you want to manifest?" });
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await generateContentWithFallbackAndRetry({
       contents: `User wants to manifest: "${goal}". Current challenges: "${currentChallenges || 'None'}". 
       Recommend 3 powerful high-frequency rituals (habits) to align with this manifestation. 
       For each ritual, provide: name, description, recommended reminder time (HH:mm format), and category.`,
@@ -746,8 +784,7 @@ app.post("/api/gemini/oracle", async (req, res) => {
       ? `Uncompleted focus areas for today: ${uncompletedHabits.join(", ")}.`
       : "";
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await generateContentWithFallbackAndRetry({
       contents: `Generate a mystical, daily 'Astral Oracle Card' drawing.
       The user's manifestation goal is: "${goal || "High frequency alignment"}".
       ${uncompletedText}
@@ -851,8 +888,7 @@ app.post("/api/gemini/desire-reading", async (req, res) => {
 
     const userGoalText = manifestationGoal ? `Their focus/goal is: "${manifestationGoal}".` : "";
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+    const response = await generateContentWithFallbackAndRetry({
       contents: `Generate a beautiful, mystical 'Daily Positive Celestial Card Reading' to elevate the user's feelings.
       ${desiresText}
       ${userGoalText}
