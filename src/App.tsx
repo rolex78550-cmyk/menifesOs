@@ -228,7 +228,6 @@ import { StreakCalendar } from './components/StreakCalendar';
 import AdminView from './components/AdminView';
 import CinematicTour from './components/CinematicTour';
 import { SubscriptionLock } from './components/SubscriptionLock';
-import { OnboardingQuiz } from './components/OnboardingQuiz';
 import MorningCheckin, { getISTDate } from './components/MorningCheckin';
 import { DailyCheckin } from './types';
 import { 
@@ -2485,23 +2484,6 @@ return () => clearInterval(interval);
               });
             }}
           />
-        )}
-        {user && userProfile && !userProfile.hasCompletedOnboarding && (
-           <motion.div
-             key="onboarding-gate"
-             initial={{ opacity: 0 }}
-             animate={{ opacity: 1 }}
-             exit={{ opacity: 0 }}
-             className="fixed inset-0 z-[1000]"
-           >
-             <OnboardingQuiz 
-              user={user} 
-              onComplete={() => {
-                setUserProfile(prev => prev ? { ...prev, hasCompletedOnboarding: true } : prev);
-                setShowWalkthrough(true); // Show cinematic tour after onboarding
-              }} 
-            />
-           </motion.div>
         )}
         {showCelebration && (
           <CompletionCelebration 
