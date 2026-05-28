@@ -1047,7 +1047,7 @@ export default function App() {
       if (savedProfile) {
         setUserProfile(JSON.parse(savedProfile));
       } else {
-        const guestProj = { tier: 'Novice', isAdmin: false, isSubscribed: false };
+        const guestProj = { tier: 'Novice', isAdmin: false, isSubscribed: false, hasCompletedOnboarding: false };
         localStorage.setItem('vibe_os_guest_profile', JSON.stringify(guestProj));
         setUserProfile(guestProj);
       }
@@ -2486,7 +2486,7 @@ return () => clearInterval(interval);
             }}
           />
         )}
-        {user && !user.isGuest && userProfile && !userProfile.hasCompletedOnboarding && (
+        {user && userProfile && !userProfile.hasCompletedOnboarding && (
            <motion.div
              key="onboarding-gate"
              initial={{ opacity: 0 }}
@@ -3002,6 +3002,39 @@ const SettingsView = ({
     }
   };
 
+  const handleRecalibrate = async () => {
+    setIsUpdating(true);
+    try {
+      if (user && !user.isGuest) {
+        await setDoc(doc(db, 'users', user.uid), {
+          hasCompletedOnboarding: false,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } else {
+        const currentGuest = localStorage.getItem('vibe_os_guest_profile');
+        const parsed = currentGuest ? JSON.parse(currentGuest) : {};
+        const updated = {
+          ...parsed,
+          hasCompletedOnboarding: false,
+          updatedAt: new Date().toISOString()
+        };
+        localStorage.setItem('vibe_os_guest_profile', JSON.stringify(updated));
+      }
+      if (setUserProfile) {
+        setUserProfile((prev: any) => prev ? { ...prev, hasCompletedOnboarding: false } : { hasCompletedOnboarding: false });
+      }
+      onToast({
+        id: 'recalibrate-active',
+        title: 'Calibrator Initialized',
+        body: 'Opening sub-quantum frequency alignment chamber...'
+      });
+    } catch (err) {
+      console.error("Failed to re-trigger calibration:", err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const handleClearRituals = async () => {
     if (!user) return;
     if (!confirm("Are you sure you want to purge all Ritual data? This vibration cannot be undone.")) return;
@@ -3413,6 +3446,33 @@ const SettingsView = ({
             className="w-full py-5 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(16,185,129,0.1)] italic"
           >
             <Zap className="w-3.5 h-3.5" /> Test Signal Frequency
+          </button>
+        </div>
+
+        {/* Dynamic Energy Calibration Card */}
+        <div className="bg-black/40 border border-white/10 p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col justify-between shadow-2xl backdrop-blur-xl after:absolute after:inset-0 after:bg-gradient-to-tr after:from-white/5 after:to-transparent after:pointer-events-none transition-all">
+          <div>
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-8 italic flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Alignment Engine
+            </h4>
+            <div className="flex items-center gap-6 mb-6">
+              <div className="w-14 h-14 bg-emerald-500/10 rounded-[1.5rem] flex items-center justify-center border border-emerald-500/20 shadow-xl shrink-0">
+                <Sparkles className="w-6 h-6 text-emerald-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xl font-black text-white italic uppercase tracking-tighter leading-none mb-1">Recalibrate Core</p>
+                <p className="text-[10px] font-black text-white/20 uppercase tracking-widest italic truncate">
+                  Current: {userProfile?.manifestationGoal || "Initial Calibration State"}
+                </p>
+              </div>
+            </div>
+          </div>
+          <button 
+            type="button"
+            onClick={handleRecalibrate}
+            className="w-full py-5 bg-emerald-500 hover:bg-emerald-400 text-white border border-transparent rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(16,185,129,0.2)] hover:scale-103 active:scale-97 cursor-pointer focus:outline-none"
+          >
+            <Sparkles className="w-4 h-4 text-white" /> Recalibrate Energy
           </button>
         </div>
 
