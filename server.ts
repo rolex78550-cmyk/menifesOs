@@ -608,7 +608,17 @@ const getRazorpay = () => {
     console.warn(" [Razorpay] WARNING: It looks like the SECRET_KEY starts with 'rzp_', which is usually for KEY_ID. Swapping likely needed.");
   }
   
-  return new Razorpay({
+  // Safe resolver for the Razorpay constructor across ESM and CommonJS
+  let RazorpayConstructor = Razorpay as any;
+  if (RazorpayConstructor && RazorpayConstructor.default) {
+    RazorpayConstructor = RazorpayConstructor.default;
+  }
+  
+  if (typeof RazorpayConstructor !== 'function') {
+    throw new Error(`Razorpay is not a constructor (got ${typeof RazorpayConstructor}). Check module import.`);
+  }
+
+  return new RazorpayConstructor({
     key_id,
     key_secret,
   });
@@ -944,24 +954,24 @@ app.get("/api/config/razorpay-key", (req, res) => {
 
 // Razorpay Order Creation
 app.post("/api/razorpay/create-order", async (req, res) => {
-  const rzp = getRazorpay();
-  if (!rzp) {
-    return res.status(500).json({ error: "Razorpay API keys are missing or set to placeholder. Please update RAZORPAY_KEY_ID and RAZORPAY_SECRET_KEY in Environment Variables." });
-  }
-  
-  const { amount, currency, receipt, planName, billingCycle, userId, userEmail, userName } = req.body;
-  
-  // Validation
-  if (!amount || isNaN(parseFloat(amount))) {
-    return res.status(400).json({ error: "Invalid amount provided." });
-  }
-
-  const finalAmount = Math.round(parseFloat(amount) * 100);
-  if (finalAmount <= 0) {
-    return res.status(400).json({ error: "Amount must be greater than zero." });
-  }
-
   try {
+    const rzp = getRazorpay();
+    if (!rzp) {
+      return res.status(500).json({ error: "Razorpay API keys are missing or set to placeholder. Please update RAZORPAY_KEY_ID and RAZORPAY_SECRET_KEY in Environment Variables." });
+    }
+    
+    const { amount, currency, receipt, planName, billingCycle, userId, userEmail, userName } = req.body;
+    
+    // Validation
+    if (!amount || isNaN(parseFloat(amount))) {
+      return res.status(400).json({ error: "Invalid amount provided." });
+    }
+
+    const finalAmount = Math.round(parseFloat(amount) * 100);
+    if (finalAmount <= 0) {
+      return res.status(400).json({ error: "Amount must be greater than zero." });
+    }
+
     console.log(`[Razorpay] Creating ${req.body.useLink ? 'Payment Link' : 'Order'}:`, {
       finalAmount,
       currency: currency || "INR",
@@ -1001,7 +1011,7 @@ app.post("/api/razorpay/create-order", async (req, res) => {
       currency: currency || "INR",
       receipt: (receipt || `rcpt_${Date.now()}`).substring(0, 40),
     });
-    res.json(order);
+    return res.json(order);
   } catch (error: any) {
     console.error("Razorpay Order Error:", error);
     // Be more specific for authentication errors
@@ -1027,7 +1037,7 @@ app.post("/api/razorpay/create-order", async (req, res) => {
         debug_id_len: key_id.length
       });
     }
-    res.status(500).json({ error: "Failed to create order. Check server logs." });
+    return res.status(500).json({ error: error.message || "Failed to create order. Check server logs." });
   }
 });
 
