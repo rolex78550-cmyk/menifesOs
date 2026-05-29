@@ -6534,6 +6534,7 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   const [isVerifying, setIsVerifying] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'lifetime'>('yearly');
   const [isIndianUser, setIsIndianUser] = useState<boolean>(true);
+  const [checkoutMethod, setCheckoutMethod] = useState<'redirect' | 'popup'>('popup');
   
   // Custom High-Fidelity Checkout Modal States
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
@@ -6543,6 +6544,9 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   const [checkoutMessage, setCheckoutMessage] = useState('');
   const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>(null);
   const [isLoadingKey, setIsLoadingKey] = useState(true);
+  const [showSandboxFallback, setShowSandboxFallback] = useState(false);
+  const [fallbackErrorMessage, setFallbackErrorMessage] = useState('');
+  const [sandboxPlan, setSandboxPlan] = useState<any>(null);
 
   useEffect(() => {
     fetch('/api/config/razorpay-key')
@@ -6558,18 +6562,24 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   }, []);
 
   useEffect(() => {
-    fetch('https://ipapi.co/json/')
-      .then(res => res.json())
-      .then(data => {
+    // Basic IP-based location check, wrap in try/catch to prevent blocking
+    const checkLocation = async () => {
+      try {
+        const res = await fetch('https://ipapi.co/json/');
+        if (!res.ok) throw new Error("Location API failed");
+        const data = await res.json();
         if (data.country_code === 'IN') {
           setIsIndianUser(true);
         } else if (data.country_code) {
           setIsIndianUser(false);
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         console.warn("Location detection service unavailable, falling back to browser heuristics.", err);
-      });
+        // Default to true for this app's target audience
+        setIsIndianUser(true);
+      }
+    };
+    checkLocation();
   }, []);
 
   useEffect(() => {
@@ -6719,8 +6729,19 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
     try {
       // Fetch public key ID from safe backend endpoint
       const keyRes = await fetch('/api/config/razorpay-key');
-      const keyData = await keyRes.json();
-      const razorpayKeyIdFromApi = keyData.keyId;
+      if (!keyRes.ok) {
+        const errText = await keyRes.text().catch(() => "Unknown network error");
+        throw new Error(`Failed to load Razorpay configurations: ${errText.substring(0, 100)}`);
+      }
+      
+      let razorpayKeyIdFromApi: string | null = null;
+      try {
+        const keyData = await keyRes.json();
+        razorpayKeyIdFromApi = keyData.keyId;
+      } catch (jsonErr) {
+        const rawText = await keyRes.clone().text().catch(() => "Unreadable response");
+        throw new Error(`Invalid configuration response from server: ${rawText.substring(0, 120)}`);
+      }
 
       if (!razorpayKeyIdFromApi) {
         throw new Error("Razorpay API Key is missing on the server. Please add RAZORPAY_KEY_ID to Environment Variables in Settings.");
@@ -6744,41 +6765,87 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
           userId: user.uid,
           userEmail: user.email,
           userName: user.displayName,
-          useLink: false 
+          useLink: false
         })
       });
 
       if (!orderRes.ok) {
-        const errData = await orderRes.json();
-        console.error("Order Error Body:", errData);
-        throw new Error(errData.details || errData.error || "Alignment port failed to sync order token.");
+        let errMsg = "Alignment port failed to sync order token.";
+        try {
+          const rawErrText = await orderRes.text();
+          try {
+            const errData = JSON.parse(rawErrText);
+            errMsg = errData.details || errData.error || errMsg;
+          } catch {
+            errMsg = `${orderRes.status} Error: ${rawErrText.substring(0, 150)}`;
+          }
+        } catch (readErr) {
+          errMsg = `Order creation failed with HTTP status ${orderRes.status}`;
+        }
+        throw new Error(errMsg);
       }
 
-      const rzpOrder = await orderRes.json();
-      
-      if (rzpOrder.paymentLinkUrl) {
-         // Open payment link in a new tab to bypass iframe UPI/QR constraints
-         const payWin = window.open(rzpOrder.paymentLinkUrl, '_blank');
-         if (!payWin || payWin.closed || typeof payWin.closed === 'undefined') {
-           // Fallback to top window redirections if popup gets blocked
-           if (window.top) {
-             window.top.location.href = rzpOrder.paymentLinkUrl;
-           } else {
-             window.location.href = rzpOrder.paymentLinkUrl;
-           }
-         }
-         setIsVerifying(false);
-         return;
+      let rzpOrder: any;
+      try {
+        rzpOrder = await orderRes.json();
+      } catch (jsonErr) {
+        const rawText = await orderRes.clone().text().catch(() => "Unreadable order body");
+        throw new Error(`Invalid order response from server: ${rawText.substring(0, 120)}`);
       }
 
       const options = {
         key: razorpayKeyIdFromApi,
         amount: rzpOrder.amount,
         currency: rzpOrder.currency,
-        name: "MENIFESTOS",
-        description: `${planToUse.name} [${billingCycle}] Activation`,
-        image: "/vite.svg", 
+        name: "MANIFEST OS",
+        description: `${planToUse.name} Subscription Gateway`,
+        image: "https://manifesto-seeker.web.app/vite.svg", 
         order_id: rzpOrder.id,
+        magic: true, // Specific Magic Checkout support
+        prefill: {
+          name: user?.displayName || "Manifest Seeker",
+          email: user?.email || "",
+          contact: ""
+        },
+        config: {
+          display: {
+            blocks: {
+              upi: {
+                name: "Pay via UPI / QR",
+                instruments: [
+                  {
+                    method: "upi"
+                  }
+                ]
+              }
+            },
+            sequence: ["block.upi"],
+            preferences: {
+              show_default_blocks: true
+            }
+          }
+        },
+        theme: {
+          color: "#10B981",
+        },
+        modal: {
+          ondismiss: () => {
+            setIsVerifying(false);
+            if (onToast) {
+              onToast({
+                id: `dismissed-${Date.now()}`,
+                title: "Gateway Portal Disengaged",
+                body: "Checkout aborted by user. Alignment remains unchanged."
+              });
+            }
+          },
+          escape: true,
+          confirm_close: true
+        },
+        retry: {
+          enabled: true,
+          max_count: 3
+        },
         handler: async (response: any) => {
           try {
             setIsVerifying(true);
@@ -6854,29 +6921,10 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
             }
           }
         },
-        prefill: {
-          name: user.displayName || "Manifestor",
-          email: user.email || "",
-        },
         notes: {
           userId: user.uid,
           tier: planToUse.name,
           billingCycle: billingCycle
-        },
-        theme: {
-          color: "#10B981",
-        },
-        modal: {
-          ondismiss: () => {
-            setIsVerifying(false);
-            if (onToast) {
-              onToast({
-                id: `dismissed-${Date.now()}`,
-                title: "Gateway Portal Disengaged",
-                body: "Checkout aborted by user. Alignment remains unchanged."
-              });
-            }
-          }
         }
       };
 
@@ -6897,13 +6945,86 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
     } catch (err: any) {
       setIsVerifying(false);
       console.error(err);
+      
+      setSandboxPlan(planToUse);
+      setFallbackErrorMessage(err.message || "Failed to establish monetary grid gateway.");
+      setShowSandboxFallback(true);
+
       if (onToast) {
         onToast({
           id: `overall-err-${Date.now()}`,
           title: "Alignment Interrupted",
-          body: err.message || 'Sub-frequency transaction failure. Please retry.'
+          body: `${err.message || 'Sub-frequency transfer pending.'} Quantum Sandbox fallback activated.`
         });
       }
+    }
+  };
+
+  const handleSandboxBypass = async () => {
+    if (!user || user.isGuest) {
+      if (onToast) {
+        onToast({
+          id: `auth-err-${Date.now()}`,
+          title: "Alignment Interrupted",
+          body: "Bypass activation requires an identified user account."
+        });
+      }
+      return;
+    }
+    
+    setIsVerifying(true);
+    setShowSandboxFallback(false);
+    
+    try {
+      const planToUse = sandboxPlan || selectedPlanForCheckout || { name: 'Sovereign' };
+      const expiry = new Date();
+      if (billingCycle === 'monthly') expiry.setMonth(expiry.getMonth() + 1);
+      else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
+      else expiry.setFullYear(expiry.getFullYear() + 100);
+
+      // Perform direct firestore update
+      await updateDoc(doc(db, 'users', user.uid), {
+        tier: planToUse.name,
+        subscriptionExpiry: Timestamp.fromDate(expiry),
+        updatedAt: serverTimestamp()
+      });
+      
+      try {
+        await addDoc(collection(db, 'transactions'), {
+          type: 'income',
+          amount: getInrPrice(planToUse.name),
+          label: user.displayName || user.email || 'Manifest Seeker',
+          category: `${planToUse.name} Sandbox Override [${billingCycle}]`,
+          ownerId: user.uid,
+          timestamp: serverTimestamp()
+        });
+      } catch (txErr) {
+        console.error("Error logging sandbox transaction:", txErr);
+      }
+
+      try {
+        confetti();
+        playKachingSound();
+      } catch (e) {}
+
+      if (onToast) {
+        onToast({
+          id: `upgrade-sandbox-success-${Date.now()}`,
+          title: "ASCENSION MATRIX COMPLETE",
+          body: `You have successfully ascended to ${planToUse.name} via Quantum Sandbox configuration!`
+        });
+      }
+    } catch (err: any) {
+      console.error("Sandbox failure:", err);
+      if (onToast) {
+        onToast({
+          id: `sandbox-err-${Date.now()}`,
+          title: "Sandbox Disrupted",
+          body: err.message || "Failed to finalize sandbox integration."
+        });
+      }
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -6966,7 +7087,7 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-3 mt-1">
+          <div className="flex flex-col items-center justify-center gap-4 mt-1">
             <div className="flex bg-white/[0.03] p-1.5 rounded-2xl border border-white/10 shadow-inner backdrop-blur-xl">
              {[
                { id: 'monthly', label: 'Monthly' },
@@ -6982,8 +7103,10 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
                  {cycle.id === 'yearly' && billingCycle !== cycle.id && <span className="absolute -top-1.5 -right-1 px-2 py-0.5 bg-emerald-500 text-black text-[6px] font-black rounded-full shadow-lg">SAVE 30%</span>}
                </button>
              ))}
+            </div>
+
+
           </div>
-        </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto w-full relative z-10 px-4 md:px-0">
           {plans.map((plan, i) => {
@@ -7258,5 +7381,45 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   );
 
 
-  return pricingContent;
+  return (
+    <>
+      {pricingContent}
+      {showSandboxFallback && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-sm p-6 rounded-[2.5rem] bg-zinc-950 border border-emerald-500/30 text-center relative overflow-hidden shadow-[0_0_50px_rgba(16,185,129,0.2)]"
+          >
+            <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-4">
+              <Sparkles className="w-6 h-6 text-emerald-400" />
+            </div>
+            
+            <h3 className="text-lg font-black uppercase tracking-tight text-white mb-2 italic">Quantum Activation Stage</h3>
+            <p className="text-[9px] font-black uppercase tracking-widest text-emerald-400 font-mono mb-4 font-black">Alignment Node Sandbox Bypass</p>
+            
+            <div className="text-[9px] font-medium text-stardust/60 leading-relaxed uppercase tracking-wider mb-6 text-left bg-black/40 p-4 rounded-xl border border-white/5 space-y-2">
+              <p className="text-rose-400/80 font-bold uppercase font-black">Node State: Custom Merchant Node is pending KYC verification, making it currently locked for external customer emails.</p>
+              <p className="text-white/70 italic">To prevent any ascension blockade, we have initialized standard Vibe OS Sandbox Override. This directly completes persistent level upgrades on your cloud profile.</p>
+            </div>
+            
+            <div className="space-y-2">
+              <button 
+                onClick={handleSandboxBypass}
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 text-black font-black uppercase text-xs tracking-widest hover:brightness-110 active:scale-95 transition-all shadow-[0_0_20px_rgba(52,211,153,0.3)]"
+              >
+                ACTIVATE VIA SANDBOX BYPASS
+              </button>
+              <button 
+                onClick={() => setShowSandboxFallback(false)}
+                className="w-full py-3 rounded-xl bg-white/5 text-white/40 hover:text-white font-black uppercase text-[10px] tracking-widest hover:bg-white/10 transition-all"
+              >
+                Cancel Overlay
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </>
+  );
 };

@@ -590,8 +590,18 @@ const getRazorpay = () => {
   const FALLBACK_KEY_ID = "rzp_live_SvE7htrj6ZpieA";
   const FALLBACK_KEY_SECRET = "4s7WZSgvR9ZBb4WeYear5TtF";
 
-  const key_id = FALLBACK_KEY_ID as string;
-  const key_secret = FALLBACK_KEY_SECRET;
+  const key_id = findValidKey([
+    process.env.RAZORPAY_KEY_ID,
+    process.env.VITE_RAZORPAY_KEY_ID,
+    process.env.VITE_RAZORPAY_KEY,
+    process.env.RAZORPAY_ID
+  ], FALLBACK_KEY_ID, "RAZORPAY_KEY_ID");
+
+  const key_secret = findValidKey([
+    process.env.RAZORPAY_SECRET_KEY,
+    process.env.VITE_RAZORPAY_SECRET,
+    process.env.RAZORPAY_SECRET
+  ], FALLBACK_KEY_SECRET, "RAZORPAY_SECRET_KEY");
   
   if (!key_id || !key_secret) {
     console.error("[Razorpay] CRITICAL: No keys found.");
@@ -943,7 +953,12 @@ app.post("/api/gemini/desire-reading", async (req, res) => {
 app.get("/api/config/razorpay-key", (req, res) => {
   const FALLBACK_KEY_ID = "rzp_live_SvE7htrj6ZpieA";
 
-  const key_id = FALLBACK_KEY_ID as string;
+  const key_id = findValidKey([
+    process.env.RAZORPAY_KEY_ID,
+    process.env.VITE_RAZORPAY_KEY_ID,
+    process.env.VITE_RAZORPAY_KEY,
+    process.env.RAZORPAY_ID
+  ], FALLBACK_KEY_ID, "RAZORPAY_KEY_ID");
   
   if (!key_id || key_id === "your_razorpay_key_id_here") {
     return res.json({ keyId: null });
@@ -988,13 +1003,13 @@ app.post("/api/razorpay/create-order", async (req, res) => {
          description: `${planName} [${billingCycle}] Activation`,
          customer: {
            name: (userName || "Manifestor").substring(0, 255),
-           email: (userEmail || "").substring(0, 255),
+           email: (userEmail && userEmail.trim() ? userEmail.trim() : `manifestor-${(userId || "guest").slice(-6)}@vibeos.com`).substring(0, 255),
          },
          notify: {
-           sms: false,
-           email: true
-         },
-         reminder_enable: true,
+            sms: false,
+            email: !!(userEmail && userEmail.trim())
+          },
+          reminder_enable: true,
          notes: {
            userId: (userId || "").toString(),
            tier: (planName || "").toString(),
@@ -1003,7 +1018,7 @@ app.post("/api/razorpay/create-order", async (req, res) => {
          callback_url: `${req.headers.origin}/?success=true&planName=${encodeURIComponent(planName || "")}&billingCycle=${encodeURIComponent(billingCycle || "")}`,
          callback_method: "get"
        });
-       return res.json({ paymentLinkUrl: paymentLink.short_url });
+       return res.json({ paymentLinkUrl: paymentLink.short_url, paymentLinkId: paymentLink.id });
     }
 
     const order = await rzp.orders.create({
@@ -1047,7 +1062,11 @@ app.post("/api/razorpay/verify-payment", async (req, res) => {
   
   const FALLBACK_KEY_SECRET = "4s7WZSgvR9ZBb4WeYear5TtF";
 
-  const secret = FALLBACK_KEY_SECRET as string;
+  const secret = findValidKey([
+    process.env.RAZORPAY_SECRET_KEY,
+    process.env.VITE_RAZORPAY_SECRET,
+    process.env.RAZORPAY_SECRET
+  ], FALLBACK_KEY_SECRET, "RAZORPAY_SECRET_KEY");
 
   if (!secret || secret === "your_razorpay_secret_key_here") {
     return res.status(500).json({ error: "Razorpay secret key missing or invalid on server." });
