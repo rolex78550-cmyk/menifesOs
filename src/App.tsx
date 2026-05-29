@@ -6575,27 +6575,97 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   useEffect(() => {
     // Handle redirection success from Payment Link
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('success') === 'true' && user && !user.isGuest) {
-       // Refresh user data or show success
-       const checkUpgrade = async () => {
+    const success = urlParams.get('success') === 'true';
+    const plId = urlParams.get('razorpay_payment_link_id');
+    const pId = urlParams.get('razorpay_payment_id');
+    const planName = urlParams.get('planName') || 'Sovereign';
+    const bCycle = urlParams.get('billingCycle') || 'monthly';
+
+    if (success && user && !user.isGuest) {
+       const verifyAndUpgrade = async () => {
          try {
-           const userDoc = await getDoc(doc(db, 'users', user.uid));
-           if (userDoc.exists()) {
-             const data = userDoc.data();
-             if (data.tier && data.tier !== 'Novice') {
-               // Success!
-               if (onToast) {
-                 onToast({
-                    id: 'upgrade-success',
-                    title: 'Ascension Complete',
-                    body: `Your vibrational match to ${data.tier} has been established.`
-                 });
-               }
+           if (onToast) {
+             onToast({
+               id: 'verifying-payment-link',
+               title: 'Verifying Matrix Connection...',
+               body: 'Connecting to monetary node alignment. Please wait.'
+             });
+           }
+
+           // If there is a payment link id from Razorpay, double-verify with the backend first
+           if (plId) {
+             const verifyRes = await fetch('/api/razorpay/verify-payment-link', {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify({
+                 payment_link_id: plId,
+                 payment_id: pId
+               })
+             });
+
+             if (!verifyRes.ok) {
+               const verifyErr = await verifyRes.json();
+               throw new Error(verifyErr.error || "Payment validation failed at monetary node.");
              }
            }
-         } catch (e) {}
+
+           // Payment verified! Now execute the level upgrade
+           const expiry = new Date();
+           if (bCycle === 'monthly') expiry.setMonth(expiry.getMonth() + 1);
+           else if (bCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
+           else expiry.setFullYear(expiry.getFullYear() + 100);
+
+           await updateDoc(doc(db, 'users', user.uid), {
+             tier: planName,
+             subscriptionExpiry: Timestamp.fromDate(expiry),
+             updatedAt: serverTimestamp()
+           });
+
+           // Add the transaction document
+           const inrAmount = planName === 'Sovereign' ? (bCycle === 'monthly' ? 99 : bCycle === 'yearly' ? 799 : 1999) : 0;
+           try {
+             await addDoc(collection(db, 'transactions'), {
+               type: 'income',
+               amount: inrAmount,
+               label: user.displayName || user.email || 'Manifest Seeker',
+               category: `${planName} Activation [${bCycle}]`,
+               ownerId: user.uid,
+               timestamp: serverTimestamp()
+             });
+           } catch (txErr) {
+             console.error("Tx writing failed but user upgraded", txErr);
+           }
+
+           // Actions of glorious vibration
+           try {
+             confetti();
+             playKachingSound();
+           } catch (soundErr) {}
+
+           if (onToast) {
+             onToast({
+                id: 'pl-upgrade-success',
+                title: 'ASCENSION ACTIVE',
+                body: `Your vibrational match to ${planName} has been established successfully!`
+             });
+           }
+         } catch (upgradeErr: any) {
+           console.error("Payment Link verification/upgrade error:", upgradeErr);
+           if (onToast) {
+             onToast({
+               id: 'pl-upgrade-failed',
+               title: 'Alignment Port Sync Failed',
+               body: upgradeErr.message || "Failed to confirm payment on landing."
+             });
+           }
+         } finally {
+            // Clean URL query parameters so reload doesn't trigger it again
+            try {
+              window.history.replaceState({}, document.title, window.location.pathname);
+            } catch (histErr) {}
+         }
        };
-       checkUpgrade();
+       verifyAndUpgrade();
     }
   }, [user, db, onToast]);
 
@@ -6604,8 +6674,9 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   const getInrPrice = (planName: string) => {
     if (planName === 'Novice') return 0;
     if (planName === 'Sovereign') {
-      if (billingCycle === 'monthly') return 999;
-      if (billingCycle === 'yearly') return 7999;
+      if (billingCycle === 'monthly') return 99;
+      if (billingCycle === 'yearly') return 799;
+      if (billingCycle === 'lifetime') return 1999;
     }
     return 0;
   };
@@ -6613,8 +6684,9 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   const getUsdPrice = (planName: string) => {
     if (planName === 'Novice') return '0';
     if (planName === 'Sovereign') {
-      if (billingCycle === 'monthly') return '15.00';
-      if (billingCycle === 'yearly') return '99.00';
+      if (billingCycle === 'monthly') return '5.00';
+      if (billingCycle === 'yearly') return '49.00';
+      if (billingCycle === 'lifetime') return '99.00';
     }
     return '0';
   };
@@ -6679,51 +6751,24 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
       if (!orderRes.ok) {
         const errData = await orderRes.json();
         console.error("Order Error Body:", errData);
-        
-        // Mock Simulation Mode if API Keys are invalid (to allow testing the upgrade UI)
-        if (onToast) {
-          onToast({
-            id: `mock-upgrade-${Date.now()}`,
-            title: "TEST MODE ACTIVATED",
-            body: "Razorpay keys are missing/invalid. Simulating successful upgrade for testing."
-          });
-        }
-        
-        const expiry = new Date();
-        if (billingCycle === 'monthly') expiry.setMonth(expiry.getMonth() + 1);
-        else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
-        else expiry.setFullYear(expiry.getFullYear() + 100);
-
-        if (user.isGuest) {
-          if (updateOfflineProfile) {
-            updateOfflineProfile(planToUse.name, expiry);
-          }
-        } else {
-          try {
-            await updateDoc(doc(db, 'users', user.uid), {
-              tier: planToUse.name,
-              subscriptionExpiry: Timestamp.fromDate(expiry),
-              updatedAt: serverTimestamp()
-            });
-            await addDoc(collection(db, 'transactions'), {
-              type: 'income',
-              amount: inrAmount,
-              label: user.displayName || user.email || 'Menifest Seeker',
-              category: `${planToUse.name} Mock Activation [${billingCycle}]`,
-              ownerId: user.uid,
-              timestamp: serverTimestamp()
-            });
-          } catch(e) { console.error("Mock upgrade failed", e); }
-        }
-        setIsVerifying(false);
-        return;
+        throw new Error(errData.details || errData.error || "Alignment port failed to sync order token.");
       }
 
       const rzpOrder = await orderRes.json();
       
       if (rzpOrder.paymentLinkUrl) {
-        window.location.href = rzpOrder.paymentLinkUrl;
-        return;
+         // Open payment link in a new tab to bypass iframe UPI/QR constraints
+         const payWin = window.open(rzpOrder.paymentLinkUrl, '_blank');
+         if (!payWin || payWin.closed || typeof payWin.closed === 'undefined') {
+           // Fallback to top window redirections if popup gets blocked
+           if (window.top) {
+             window.top.location.href = rzpOrder.paymentLinkUrl;
+           } else {
+             window.location.href = rzpOrder.paymentLinkUrl;
+           }
+         }
+         setIsVerifying(false);
+         return;
       }
 
       const options = {
@@ -6925,7 +6970,8 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
             <div className="flex bg-white/[0.03] p-1.5 rounded-2xl border border-white/10 shadow-inner backdrop-blur-xl">
              {[
                { id: 'monthly', label: 'Monthly' },
-               { id: 'yearly', label: 'Yearly' }
+               { id: 'yearly', label: 'Yearly' },
+               { id: 'lifetime', label: 'Lifetime' }
              ].map((cycle) => (
                <button
                  key={cycle.id}

@@ -574,7 +574,8 @@ const findValidKey = (keys: (string | undefined)[], fallback: string, keyName: s
         key.trim() !== "your_razorpay_key_id_here" && 
         key.trim() !== "your_razorpay_secret_key_here" &&
         key.trim() !== "sb" &&
-        !key.includes("PLACEHOLDER")) {
+        !key.includes("PLACEHOLDER") &&
+        key.trim().length > 10) {
       console.log(`[Razorpay] Using environment variable for ${keyName}`);
       return key.trim().replace(/^[:\s]+|[:\s]+$/g, ""); // Clean potential junk
     }
@@ -586,23 +587,11 @@ const findValidKey = (keys: (string | undefined)[], fallback: string, keyName: s
 // Razorpay Initialization Helper
 const getRazorpay = () => {
   // FALLBACK CREDENTIALS
-  const FALLBACK_KEY_ID = "rzp_live_StIb9CN5Uj0BlK";
-  const FALLBACK_KEY_SECRET = "yQE23ZtZ9cY1XMuVPfrnG9EC";
+  const FALLBACK_KEY_ID = "rzp_live_SvE7htrj6ZpieA";
+  const FALLBACK_KEY_SECRET = "4s7WZSgvR9ZBb4WeYear5TtF";
 
-  const key_id = findValidKey([
-    process.env.RAZORPAY_KEY_ID,
-    process.env.VITE_RAZORPAY_KEY_ID,
-    process.env.VITE_RAZORPAY_KEY,
-    process.env.RAZORPAY_ID
-  ], FALLBACK_KEY_ID, "Key ID");
-
-  const key_secret = findValidKey([
-    process.env.RAZORPAY_KEY_SECRET,
-    process.env.RAZORPAY_SECRET_KEY,
-    process.env.VITE_RAZORPAY_SECRET_KEY,
-    process.env.RAZORPAY_SECRET,
-    process.env.RAZORPAY_SECRET_K
-  ], FALLBACK_KEY_SECRET, "Secret Key");
+  const key_id = FALLBACK_KEY_ID as string;
+  const key_secret = FALLBACK_KEY_SECRET;
   
   if (!key_id || !key_secret) {
     console.error("[Razorpay] CRITICAL: No keys found.");
@@ -942,14 +931,9 @@ app.post("/api/gemini/desire-reading", async (req, res) => {
 
 // Safe Endpoint for the Frontend to fetch the public Razorpay Key ID
 app.get("/api/config/razorpay-key", (req, res) => {
-  const FALLBACK_KEY_ID = "rzp_live_StIb9CN5Uj0BlK";
+  const FALLBACK_KEY_ID = "rzp_live_SvE7htrj6ZpieA";
 
-  const key_id = findValidKey([
-    process.env.RAZORPAY_KEY_ID,
-    process.env.VITE_RAZORPAY_KEY_ID,
-    process.env.VITE_RAZORPAY_KEY,
-    process.env.RAZORPAY_ID
-  ], FALLBACK_KEY_ID, "Key ID (Config)");
+  const key_id = FALLBACK_KEY_ID as string;
   
   if (!key_id || key_id === "your_razorpay_key_id_here") {
     return res.json({ keyId: null });
@@ -1006,7 +990,7 @@ app.post("/api/razorpay/create-order", async (req, res) => {
            tier: (planName || "").toString(),
            billingCycle: (billingCycle || "").toString()
          },
-         callback_url: `${req.headers.origin}/upgrade?success=true`,
+         callback_url: `${req.headers.origin}/?success=true&planName=${encodeURIComponent(planName || "")}&billingCycle=${encodeURIComponent(billingCycle || "")}`,
          callback_method: "get"
        });
        return res.json({ paymentLinkUrl: paymentLink.short_url });
@@ -1021,7 +1005,14 @@ app.post("/api/razorpay/create-order", async (req, res) => {
   } catch (error: any) {
     console.error("Razorpay Order Error:", error);
     // Be more specific for authentication errors
-    if (error.statusCode === 401) {
+    const isAuthError = 
+      error.statusCode === 401 || 
+      error.error?.description === 'Authentication failed' ||
+      error.description === 'Authentication failed' ||
+      error.error?.code === 'BAD_REQUEST_ERROR' ||
+      error.code === 'BAD_REQUEST_ERROR';
+
+    if (isAuthError) {
       const key_id = (
         process.env.RAZORPAY_KEY_ID || 
         process.env.VITE_RAZORPAY_KEY_ID || 
@@ -1031,7 +1022,7 @@ app.post("/api/razorpay/create-order", async (req, res) => {
       ).trim();
       return res.status(401).json({ 
         error: "Razorpay Authentication Failed", 
-        details: "Your Key ID or Secret is invalid. Double-check them in AI Studio Settings -> Environment Variables.",
+        details: "Your Key ID or Secret is missing/invalid. You need BOTH RAZORPAY_KEY_ID and RAZORPAY_SECRET_KEY in Environment Variables.",
         debug_id_prefix: key_id.substring(0, 8) + "...",
         debug_id_len: key_id.length
       });
@@ -1044,15 +1035,9 @@ app.post("/api/razorpay/create-order", async (req, res) => {
 app.post("/api/razorpay/verify-payment", async (req, res) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
   
-  const FALLBACK_KEY_SECRET = "yQE23ZtZ9cY1XMuVPfrnG9EC";
+  const FALLBACK_KEY_SECRET = "4s7WZSgvR9ZBb4WeYear5TtF";
 
-  const secret = findValidKey([
-    process.env.RAZORPAY_KEY_SECRET,
-    process.env.RAZORPAY_SECRET_KEY,
-    process.env.VITE_RAZORPAY_SECRET_KEY,
-    process.env.RAZORPAY_SECRET,
-    process.env.RAZORPAY_SECRET_K
-  ], FALLBACK_KEY_SECRET, "Secret Key (Verify)");
+  const secret = FALLBACK_KEY_SECRET as string;
 
   if (!secret || secret === "your_razorpay_secret_key_here") {
     return res.status(500).json({ error: "Razorpay secret key missing or invalid on server." });
@@ -1068,6 +1053,32 @@ app.post("/api/razorpay/verify-payment", async (req, res) => {
      res.json({ status: "ok", message: "Payment verified successfully." });
   } else {
      res.status(400).json({ status: "error", message: "Invalid signature authenticity." });
+  }
+});
+
+// Razorpay Payment Link Verification
+app.post("/api/razorpay/verify-payment-link", async (req, res) => {
+  const { payment_link_id, payment_id } = req.body;
+  
+  if (!payment_link_id) {
+    return res.status(400).json({ error: "Missing required parameter payment_link_id" });
+  }
+
+  const rzp = getRazorpay();
+  if (!rzp) {
+    return res.status(500).json({ error: "Razorpay initialization failed on server." });
+  }
+
+  try {
+    const pl = await rzp.paymentLink.fetch(payment_link_id);
+    if (pl && pl.status === "paid") {
+      res.json({ status: "ok", message: "Payment link verified successfully.", notes: pl.notes });
+    } else {
+      res.status(400).json({ status: "error", message: `Payment link status is ${pl?.status || 'unknown'}` });
+    }
+  } catch (error: any) {
+    console.error("Payment Link verification error:", error);
+    res.status(500).json({ error: error.message || "Failed to verify payment link status." });
   }
 });
 
