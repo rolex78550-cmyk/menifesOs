@@ -118,6 +118,16 @@ async function initializeFirestore() {
 
     if (!db) {
       console.error("[Firebase] CRITICAL: Could not connect to any Firestore database.");
+      console.error("[Firebase] ------------------------------------------------------------------");
+      console.error("[Firebase] ⚠️  ACTION REQUIRED: Admin Backend Features Disabled");
+      console.error("[Firebase] To enable background scheduler, CRON jobs, and server-side profile sync, you MUST provide a Firebase Service Account.");
+      console.error("[Firebase] 1. Go to Firebase Console -> Project Settings -> Service Accounts.");
+      console.error("[Firebase] 2. Click 'Generate new private key' (saves a JSON file).");
+      console.error("[Firebase] 3. Open the JSON file, copy its entire contents.");
+      console.error("[Firebase] 4. In AI Studio, go to Settings -> Environment Variables.");
+      console.error("[Firebase] 5. Add a new variable named 'FIREBASE_SERVICE_ACCOUNT' and paste the JSON.");
+      console.error("[Firebase] 6. Restart the dev server.");
+      console.error("[Firebase] ------------------------------------------------------------------");
     }
   } catch (e) {
     console.error("[Firebase] CRITICAL: Admin initialization failed:", e);

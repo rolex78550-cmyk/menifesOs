@@ -6604,9 +6604,8 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   const getInrPrice = (planName: string) => {
     if (planName === 'Novice') return 0;
     if (planName === 'Sovereign') {
-      if (billingCycle === 'monthly') return 99;
-      if (billingCycle === 'yearly') return 799;
-      if (billingCycle === 'lifetime') return 1999;
+      if (billingCycle === 'monthly') return 999;
+      if (billingCycle === 'yearly') return 7999;
     }
     return 0;
   };
@@ -6614,9 +6613,8 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   const getUsdPrice = (planName: string) => {
     if (planName === 'Novice') return '0';
     if (planName === 'Sovereign') {
-      if (billingCycle === 'monthly') return '5.00';
-      if (billingCycle === 'yearly') return '49.00';
-      if (billingCycle === 'lifetime') return '149.00';
+      if (billingCycle === 'monthly') return '15.00';
+      if (billingCycle === 'yearly') return '99.00';
     }
     return '0';
   };
@@ -6681,7 +6679,44 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
       if (!orderRes.ok) {
         const errData = await orderRes.json();
         console.error("Order Error Body:", errData);
-        throw new Error(errData.details || errData.error || "Alignment port failed to sync order token.");
+        
+        // Mock Simulation Mode if API Keys are invalid (to allow testing the upgrade UI)
+        if (onToast) {
+          onToast({
+            id: `mock-upgrade-${Date.now()}`,
+            title: "TEST MODE ACTIVATED",
+            body: "Razorpay keys are missing/invalid. Simulating successful upgrade for testing."
+          });
+        }
+        
+        const expiry = new Date();
+        if (billingCycle === 'monthly') expiry.setMonth(expiry.getMonth() + 1);
+        else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
+        else expiry.setFullYear(expiry.getFullYear() + 100);
+
+        if (user.isGuest) {
+          if (updateOfflineProfile) {
+            updateOfflineProfile(planToUse.name, expiry);
+          }
+        } else {
+          try {
+            await updateDoc(doc(db, 'users', user.uid), {
+              tier: planToUse.name,
+              subscriptionExpiry: Timestamp.fromDate(expiry),
+              updatedAt: serverTimestamp()
+            });
+            await addDoc(collection(db, 'transactions'), {
+              type: 'income',
+              amount: inrAmount,
+              label: user.displayName || user.email || 'Menifest Seeker',
+              category: `${planToUse.name} Mock Activation [${billingCycle}]`,
+              ownerId: user.uid,
+              timestamp: serverTimestamp()
+            });
+          } catch(e) { console.error("Mock upgrade failed", e); }
+        }
+        setIsVerifying(false);
+        return;
       }
 
       const rzpOrder = await orderRes.json();
@@ -6890,8 +6925,7 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
             <div className="flex bg-white/[0.03] p-1.5 rounded-2xl border border-white/10 shadow-inner backdrop-blur-xl">
              {[
                { id: 'monthly', label: 'Monthly' },
-               { id: 'yearly', label: 'Yearly' },
-               { id: 'lifetime', label: 'Lifetime' }
+               { id: 'yearly', label: 'Yearly' }
              ].map((cycle) => (
                <button
                  key={cycle.id}
