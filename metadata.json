@@ -1,7 +1,11 @@
 {
   "name": "Vibe OS",
   "description": "Premium vibration-centered manifestation operating system. Align your energy, visualize your future, and manifest your reality with high-frequency rituals and tracking.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": [
+    "clipboard-write",
+    "clipboard-read",
+    "payment"
+  ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

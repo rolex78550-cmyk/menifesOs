@@ -29,7 +29,7 @@ import { playCompletionTone } from './lib/audioFeedback';
 import CompletionCelebration from './components/CompletionCelebration';
 import AstralOracle from './components/AstralOracle';
 import CelestialPositiveCard from './components/CelestialPositiveCard';
-import { UpgradeManager } from './components/UpgradeManager';
+import { PricingPage } from './components/Subscription/PricingPage';
 
 const playDivineSound = () => {
   try {
@@ -2428,7 +2428,7 @@ return () => clearInterval(interval);
       case 'vision': return <VisionBoardView items={visionItems} addItem={addVisionItem} removeItem={removeVisionItem} />;
       case 'wealth': return <WealthView transactions={transactions} addTransaction={addTransaction} removeTransaction={removeTransaction} isMobile={isMobile} setView={setView} tier={activeTier} />;
       case 'academy': return <AcademyView tier={activeTier} />;
-      case 'pricing': return <UpgradeManager setView={setView} user={user} userProfile={userProfile} onToast={setActiveToast} updateOfflineProfile={updateOfflineProfile} />;
+      case 'pricing': return <PricingPage onClose={() => setView('dashboard')} />;
       case 'settings': return (
         <SettingsView 
           setView={setView} 

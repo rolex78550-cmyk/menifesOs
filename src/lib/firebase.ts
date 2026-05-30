@@ -9,12 +9,23 @@ import {
   updateProfile,
   signOut
 } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, doc, getDocFromServer, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Use experimental forceLongPolling to bypass potential WebSocket/ISP/iFrame blocking in AI Studio
+// Also sanitize database ID - fallback to default if not defined properly
+const dbId = (firebaseConfig.firestoreDatabaseId && !firebaseConfig.firestoreDatabaseId.includes('PLACEHOLDER')) 
+  ? firebaseConfig.firestoreDatabaseId 
+  : undefined;
+
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+  ignoreUndefinedProperties: true
+}, dbId);
+
 export const auth = getAuth(app);
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 export const googleProvider = new GoogleAuthProvider();
