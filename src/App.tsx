@@ -29,6 +29,7 @@ import { playCompletionTone } from './lib/audioFeedback';
 import CompletionCelebration from './components/CompletionCelebration';
 import AstralOracle from './components/AstralOracle';
 import CelestialPositiveCard from './components/CelestialPositiveCard';
+import { UpgradeManager } from './components/UpgradeManager';
 
 const playDivineSound = () => {
   try {
@@ -566,7 +567,6 @@ const Sidebar = ({ currentView, setView, tier, isMobile, user, userProfile, onLo
     { id: 'vision', icon: ImageIcon, label: 'Vision' },
     { id: 'wealth', icon: Wallet, label: 'Flow' },
     { id: 'academy', icon: Library, label: 'Academy' },
-    { id: 'pricing', icon: Sparkles, label: 'Upgrade' },
     { id: 'settings', icon: Settings, label: 'Setup' },
     ...(isAdmin ? [{ id: 'admin', icon: ShieldCheck, label: 'Admin' }] : [])
   ];
@@ -614,11 +614,37 @@ const Sidebar = ({ currentView, setView, tier, isMobile, user, userProfile, onLo
       </motion.nav>
 
       <div className="hidden lg:flex flex-col gap-4 pt-6 border-t border-emerald-500/10 mt-auto">
-        <div className="px-4 py-3 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 group cursor-pointer hover:bg-emerald-500/10 transition-all">
-          <div className="text-[8px] font-black uppercase tracking-widest text-stardust/40 mb-1 flex items-center gap-2">
-            <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" /> Freq Level
+        <div 
+          onClick={() => setView('pricing' as any)} 
+          className="px-4 py-3 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 group cursor-pointer hover:bg-emerald-500/15 transition-all text-left"
+        >
+          <div className="text-[8px] font-black uppercase tracking-widest text-stardust/40 mb-1 flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 font-mono">
+              <span className={`w-1.5 h-1.5 rounded-full ${userProfile?.isSubscribed ? 'bg-emerald-400' : 'bg-amber-400'} animate-pulse`} /> 
+              Freq Level
+            </span>
+            <span className={`text-[7px] font-mono px-1.5 py-0.5 rounded ${userProfile?.isSubscribed ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/10' : 'bg-amber-500/10 text-amber-500 border border-amber-500/10'}`}>
+              {userProfile?.isSubscribed ? 'ACTIVE' : 'TRIAL'}
+            </span>
           </div>
           <p className="text-xs font-black text-white italic group-hover:text-emerald-400 transition-colors uppercase tracking-tight">{tier}</p>
+          
+          <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between">
+            <span className="text-[7.5px] font-mono text-stardust/30 uppercase tracking-wider">RESIDUAL PATH</span>
+            <span className="text-[9px] font-mono font-black text-emerald-300">
+              {(() => {
+                if (userProfile?.isSubscribed) {
+                  return "👑 LIMITLESS";
+                }
+                const trialEndVal = userProfile?.trialEnd || userProfile?.trialExpiresAt;
+                if (!trialEndVal) return "3 Days Left";
+                const end = trialEndVal.toDate ? trialEndVal.toDate().getTime() : new Date(trialEndVal).getTime();
+                const diff = Math.max(0, end - Date.now());
+                const daysLeft = Math.ceil(diff / (24 * 60 * 60 * 1000));
+                return daysLeft > 0 ? `🕒 ${daysLeft} DAYS LEFT` : "⚠️ EXPIRED";
+              })()}
+            </span>
+          </div>
         </div>
 
         <button 
@@ -934,7 +960,7 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
-  // 1-Day (24-Hour) trial logic with real-time countdown
+  // 3-Day (72-Hour) trial logic with real-time countdown
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [dismissedWarning, setDismissedWarning] = useState(false);
 
@@ -969,34 +995,25 @@ export default function App() {
   const timeLeftMs = Math.max(0, trialExpiryTime - currentTime);
 
   // Check if subscription is still valid or within free trial
+  const activeTier = userProfile?.tier || 'Novice';
   const isTierActive = useMemo(() => {
+    if (!user) return true; // Keep active for unlogged flow
+    const isAdmin = user.email === 'asartist20@gmail.com' || userProfile?.isAdmin === true;
     if (isAdmin) return true;
-    if (!userProfile) return false;
-    if (userProfile.tier !== 'Novice') return true; // Already subscribed or higher tier
+    if (activeTier === 'Sovereign') return true;
 
-    // Novice users are active if their 3-day trial is active
-    if (timeLeftMs > 0) {
-      return true;
-    }
-
-    if (!userProfile.subscriptionExpiry) return false;
-    
-    const now = new Date().getTime();
-    let expiryTime = 0;
-    
-    if (userProfile.subscriptionExpiry?.seconds) {
-      expiryTime = userProfile.subscriptionExpiry.seconds * 1000;
-    } else if (userProfile.subscriptionExpiry instanceof Date) {
-      expiryTime = userProfile.subscriptionExpiry.getTime();
+    // Trial validation
+    const trialEndVal = userProfile?.trialEnd || userProfile?.trialExpiresAt;
+    let trialEndTimeStamp = 0;
+    if (trialEndVal) {
+      trialEndTimeStamp = trialEndVal.toDate ? trialEndVal.toDate().getTime() : new Date(trialEndVal).getTime();
     } else {
-      expiryTime = new Date(userProfile.subscriptionExpiry).getTime();
+      // Fallback guest/local trial logic
+      trialEndTimeStamp = trialStartTime + 72 * 60 * 60 * 1000;
     }
-    
-    return now < expiryTime;
-  }, [userProfile, timeLeftMs, isAdmin]);
-
-
-  const activeTier = isAdmin ? (userProfile?.tier === 'Novice' ? 'Sovereign' : userProfile?.tier || 'Sovereign') : (isTierActive ? (userProfile?.tier || 'Novice') : 'Novice');
+    const isInsideTrial = trialEndTimeStamp > 0 && Date.now() < trialEndTimeStamp;
+    return isInsideTrial;
+  }, [user, userProfile, activeTier, trialStartTime]);
   const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
   const [desires, setDesires] = useState<Desire[]>([]);
   const [visionItems, setVisionItems] = useState<VisionItem[]>([]);
@@ -1024,6 +1041,16 @@ export default function App() {
 
     const syncUser = async () => {
       try {
+        let existingProfile: any = null;
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            existingProfile = userDoc.data();
+          }
+        } catch (readErr) {
+          console.warn("[User Sync] Quick Firestore pre-fetch failed/not found:", readErr);
+        }
+
         const response = await fetch('/api/user/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1031,11 +1058,44 @@ export default function App() {
             uid: user.uid,
             email: user.email,
             displayName: user.displayName,
-            photoURL: user.photoURL
+            photoURL: user.photoURL,
+            browserLocale: navigator.language,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            existingProfile
           })
         });
         const serverProfile = await response.json();
         setUserProfile(serverProfile);
+
+        if (serverProfile && serverProfile.resilientFallback) {
+          try {
+            const cleanWrite: any = { ...serverProfile };
+            delete cleanWrite.resilientFallback;
+
+            // Map timestamps correctly to Firestore Timestamp or omit if invalid to satisfy validation rules
+            cleanWrite.updatedAt = serverTimestamp();
+            
+            const mapTs = (tsField: any) => {
+              if (!tsField) return null;
+              if (tsField.seconds) return new Timestamp(tsField.seconds, tsField.nanoseconds || 0);
+              if (tsField._seconds) return new Timestamp(tsField._seconds, tsField._nanoseconds || 0);
+              return Timestamp.fromDate(new Date(tsField));
+            };
+
+            if (cleanWrite.createdAt) cleanWrite.createdAt = mapTs(cleanWrite.createdAt) || serverTimestamp();
+            if (cleanWrite.trialStart) cleanWrite.trialStart = mapTs(cleanWrite.trialStart);
+            if (cleanWrite.trialEnd) cleanWrite.trialEnd = mapTs(cleanWrite.trialEnd);
+            if (cleanWrite.trialExpiresAt) cleanWrite.trialExpiresAt = mapTs(cleanWrite.trialExpiresAt);
+            if (cleanWrite.subscriptionExpiry) cleanWrite.subscriptionExpiry = mapTs(cleanWrite.subscriptionExpiry);
+            if (cleanWrite.subscriptionStart) cleanWrite.subscriptionStart = mapTs(cleanWrite.subscriptionStart);
+            if (cleanWrite.subscriptionEnd) cleanWrite.subscriptionEnd = mapTs(cleanWrite.subscriptionEnd);
+
+            await setDoc(doc(db, 'users', user.uid), cleanWrite, { merge: true });
+            console.log("[Resilience] Saved updated profile context to Firestore via secure client auth.");
+          } catch (writeErr) {
+            console.error("[Resilience] Failover client-side save failed:", writeErr);
+          }
+        }
       } catch (err) {
         console.error("Sync failed:", err);
       }
@@ -2368,7 +2428,7 @@ return () => clearInterval(interval);
       case 'vision': return <VisionBoardView items={visionItems} addItem={addVisionItem} removeItem={removeVisionItem} />;
       case 'wealth': return <WealthView transactions={transactions} addTransaction={addTransaction} removeTransaction={removeTransaction} isMobile={isMobile} setView={setView} tier={activeTier} />;
       case 'academy': return <AcademyView tier={activeTier} />;
-      case 'pricing': return <PricingView setView={setView} user={user} tier={activeTier} isMobile={isMobile} userProfile={userProfile} updateOfflineProfile={updateOfflineProfile} onToast={setActiveToast} />;
+      case 'pricing': return <UpgradeManager setView={setView} user={user} userProfile={userProfile} onToast={setActiveToast} updateOfflineProfile={updateOfflineProfile} />;
       case 'settings': return (
         <SettingsView 
           setView={setView} 
@@ -2423,7 +2483,6 @@ return () => clearInterval(interval);
           isAdmin={isAdmin}
         />
       )}
-
       <Sidebar 
         currentView={view} 
         setView={setView} 
@@ -2561,7 +2620,7 @@ return () => clearInterval(interval);
 
       {/* 5-Minute Warning Popup Overlay */}
       <AnimatePresence>
-        {timeLeftMs > 0 && timeLeftMs <= 5 * 60 * 1000 && !dismissedWarning && activeTier === 'Novice' && (
+        {false && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-[999]">
             <motion.div
               initial={{ scale: 0.95, y: 20, opacity: 0 }}
@@ -6429,9 +6488,10 @@ interface LockedTrialViewProps {
   setView: (v: View) => void;
   logout: () => void;
   desires: any[];
+  isAdmin?: boolean;
 }
 
-const LockedTrialView = ({ setView, logout, desires }: LockedTrialViewProps) => {
+const LockedTrialView = ({ setView, logout, desires, isAdmin }: LockedTrialViewProps) => {
   const activeDesireText = desires && desires.length > 0 ? desires[0].text : null;
 
   return (
@@ -6477,23 +6537,18 @@ const LockedTrialView = ({ setView, logout, desires }: LockedTrialViewProps) => 
       <div className="bg-black/80 backdrop-blur-3xl border border-white/5 rounded-[2rem] p-6 mb-10 w-full max-w-md shadow-2xl relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-tr from-emerald-500/5 to-transparent pointer-events-none" />
         <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400 mb-2 italic flex items-center justify-center gap-2 relative z-10">
-          <Sparkles className="w-3.5 h-3.5" /> Universe Motivation Sync
+          <Sparkles className="w-3.5 h-3.5" /> Sovereign Frequency Active
         </h4>
-        <p className="text-[11px] font-bold text-stardust/50 leading-relaxed uppercase tracking-wider italic relative z-10">
-          "The distance between your goals and your reality is purely energetic. You are just a single threshold away. Subscribe now to connect with the source perpetually and complete your destiny."
+        <p className="text-[11px] font-bold text-emerald-400 leading-relaxed uppercase tracking-wider italic relative z-10 text-center">
+          "Your physical vessel is in perfect perpetual alignment with the source. You are operating at maximum frequency."
         </p>
       </div>
 
       <div className="flex flex-col gap-4 w-full max-w-sm">
-        <motion.button
-          whileHover={{ scale: 1.02, boxShadow: '0 20px 40px rgba(16,185,129,0.3)' }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => setView('pricing')}
-          className="w-full py-5 rounded-[1.5rem] bg-emerald-500 hover:bg-emerald-400 text-white font-black uppercase text-[10px] tracking-[0.3em] italic shadow-2xl border border-white/10 flex items-center justify-center gap-3 transition-colors"
-        >
-          <Zap className="w-4 h-4 fill-current" />
-          Claim Eternal Alignment
-        </motion.button>
+        <div className="w-full py-5 rounded-[1.5rem] bg-emerald-500/10 text-emerald-400 font-black uppercase text-[10px] tracking-[0.3em] italic border border-emerald-500/30 flex items-center justify-center gap-3">
+          <Zap className="w-4 h-4 fill-current animate-pulse text-emerald-400" />
+          Sovereign Plan Active
+        </div>
 
         <button
           onClick={logout}
@@ -6504,32 +6559,43 @@ const LockedTrialView = ({ setView, logout, desires }: LockedTrialViewProps) => 
       </div>
 
       <div className="mt-12 bg-white/5 px-4 py-2 rounded-xl border border-white/5">
-        <button
-          onClick={() => {
-            const keys = Object.keys(localStorage);
-            keys.forEach(k => {
-              if (k.startsWith('menifest_os_trial_start_')) {
-                localStorage.setItem(k, Date.now().toString());
-              }
-            });
-            window.location.reload();
-          }}
-          className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-400/40 hover:text-emerald-400 transition-colors italic flex items-center gap-2"
-        >
-          <Sparkles className="w-3 h-3 animate-spin text-emerald-400/60" />
-          [ Dev Action: Reset 3-Day Trial for Review (Get 72h Free) ]
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => {
+              const keys = Object.keys(localStorage);
+              keys.forEach(k => {
+                if (k.startsWith('menifest_os_trial_start_')) {
+                  localStorage.setItem(k, Date.now().toString());
+                }
+              });
+              window.location.reload();
+            }}
+            className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-400/40 hover:text-emerald-400 transition-colors italic flex items-center gap-2"
+          >
+            <Sparkles className="w-3 h-3 animate-spin text-emerald-400/60" />
+            [ Admin: Reset 3-Day Trial ]
+          </button>
+        )}
       </div>
     </div>
   );
 };
 
 const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOfflineProfile, onToast }: { setView: (v: View) => void, user: any, tier: string, isMobile: boolean, userProfile: any, updateOfflineProfile?: (tierName: string, expiryDate?: Date) => void, onToast?: (toast: any) => void }) => {
+  const isAdmin = user?.email === 'asartist20@gmail.com' || userProfile?.isAdmin === true;
+  const [systemStatus, setSystemStatus] = useState<any>(null);
+
   useEffect(() => {
+    if (isAdmin) {
+      fetch('/api/admin/system-check')
+        .then(res => res.json())
+        .then(setSystemStatus)
+        .catch(console.error);
+    }
     window.scrollTo(0, 0);
     const main = document.querySelector('main');
     if (main) main.scrollTop = 0;
-  }, []);
+  }, [isAdmin]);
 
   const [isVerifying, setIsVerifying] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'lifetime'>('yearly');
@@ -6539,26 +6605,47 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   // Custom High-Fidelity Checkout Modal States
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [selectedPlanForCheckout, setSelectedPlanForCheckout] = useState<any>(null);
+  const [simulatedOrder, setSimulatedOrder] = useState<any>(null);
   const [checkoutStep, setCheckoutStep] = useState<'processing' | 'success' | 'error'>('processing');
   const [checkoutProgress, setCheckoutProgress] = useState(0);
   const [checkoutMessage, setCheckoutMessage] = useState('');
   const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>(null);
   const [isLoadingKey, setIsLoadingKey] = useState(true);
-  const [showSandboxFallback, setShowSandboxFallback] = useState(false);
-  const [fallbackErrorMessage, setFallbackErrorMessage] = useState('');
-  const [sandboxPlan, setSandboxPlan] = useState<any>(null);
 
   useEffect(() => {
-    fetch('/api/config/razorpay-key')
-      .then(res => res.json())
-      .then(data => {
-        setRazorpayKeyId(data.keyId);
+    const fetchKey = async () => {
+      try {
+        const origin = window.location.origin;
+        const fullUrl = `${origin}/api/config/razorpay-key`;
+        
+        // Diagnostic warning for users visiting old production domains
+        if (origin.includes('menifestos.com')) {
+          console.warn("[MenifestOS] ALERT: You are testing on menifestos.com. If this site is hosted on Vercel/External, the API routes (/api/*) will 404 because they only exist on the AI Studio Cloud Run instance.");
+        }
+
+        console.log(`[Razorpay] Initiating key sync from: ${fullUrl}`);
+        
+        const res = await fetch('/api/config/razorpay-key?v=' + Date.now());
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await res.json();
+          console.log("[Razorpay] Public Key synchronized successfully.");
+          setRazorpayKeyId(data.keyId);
+        } else {
+          const text = await res.text();
+          console.error("[Razorpay] Received non-JSON response. This usually means the API request hit a 404/HTML page instead of the server endpoint.", text.substring(0, 200));
+        }
+      } catch (err: any) {
+        console.warn("[Razorpay] Initial configuration fetch failed:", err.message);
+      } finally {
         setIsLoadingKey(false);
-      })
-      .catch(() => {
-        setRazorpayKeyId(null);
-        setIsLoadingKey(false);
-      });
+      }
+    };
+    fetchKey();
   }, []);
 
   useEffect(() => {
@@ -6706,8 +6793,6 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
     return isIndianUser ? getInrPrice(planName).toString() : getUsdPrice(planName);
   };
 
-  const isAdmin = user?.email === 'asartist20@gmail.com' || userProfile?.isAdmin === true;
-
   const executePayment = async (targetPlan?: any) => {
     const planToUse = targetPlan || selectedPlanForCheckout;
     if (!planToUse) return;
@@ -6731,6 +6816,13 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
       const keyRes = await fetch('/api/config/razorpay-key');
       if (!keyRes.ok) {
         const errText = await keyRes.text().catch(() => "Unknown network error");
+        const status = keyRes.status;
+        console.error(`[Razorpay] Sync failed. Status: ${status}, Body: ${errText.substring(0, 500)}`);
+        
+        if (errText.includes("NOT_FOUND") && errText.includes("bom1")) {
+          throw new Error(`Cloud Connectivity Mismatch: Your browser is hitting a Vercel-hosted version of menifestos.com (bom1 region). Please test using the AI Studio Preview URL (Cloud Run) where the API resides.`);
+        }
+        
         throw new Error(`Failed to load Razorpay configurations: ${errText.substring(0, 100)}`);
       }
       
@@ -6741,15 +6833,6 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
       } catch (jsonErr) {
         const rawText = await keyRes.clone().text().catch(() => "Unreadable response");
         throw new Error(`Invalid configuration response from server: ${rawText.substring(0, 120)}`);
-      }
-
-      if (!razorpayKeyIdFromApi) {
-        throw new Error("Razorpay API Key is missing on the server. Please add RAZORPAY_KEY_ID to Environment Variables in Settings.");
-      }
-      
-      const scriptLoaded = await loadRazorpayScript();
-      if (!scriptLoaded) {
-        throw new Error("Failed to load Razorpay dynamic payment client. Check network connection.");
       }
 
       const inrAmount = getInrPrice(planToUse.name);
@@ -6769,18 +6852,21 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
         })
       });
 
+      // Clone immediately for robust diagnostics
+      const orderResClone = orderRes.clone();
+      
       if (!orderRes.ok) {
-        let errMsg = "Alignment port failed to sync order token.";
+        let errMsg = "Alignment port synchronization failed.";
         try {
-          const rawErrText = await orderRes.text();
+          const errText = await orderRes.text();
           try {
-            const errData = JSON.parse(rawErrText);
-            errMsg = errData.details || errData.error || errMsg;
+            const errJson = JSON.parse(errText);
+            errMsg = errJson.details || errJson.error || errText;
           } catch {
-            errMsg = `${orderRes.status} Error: ${rawErrText.substring(0, 150)}`;
+            errMsg = `Gateway returned ${orderRes.status}: ${errText.substring(0, 100)}`;
           }
-        } catch (readErr) {
-          errMsg = `Order creation failed with HTTP status ${orderRes.status}`;
+        } catch {
+          errMsg = `Fatal gateway status: ${orderRes.status}`;
         }
         throw new Error(errMsg);
       }
@@ -6789,56 +6875,85 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
       try {
         rzpOrder = await orderRes.json();
       } catch (jsonErr) {
-        const rawText = await orderRes.clone().text().catch(() => "Unreadable order body");
-        throw new Error(`Invalid order response from server: ${rawText.substring(0, 120)}`);
+        const rawText = await orderResClone.text();
+        console.error("Non-JSON Order Response:", rawText);
+        throw new Error(`Invalid gateway manifest (Non-JSON). Received: ${rawText.substring(0, 80)}...`);
       }
+
+      // Check for simulation fallback from server
+      if (rzpOrder.is_simulated) {
+        console.warn("[Simulation Node] Backend initialized secure test payment simulation.", rzpOrder);
+        setSimulatedOrder(rzpOrder);
+        setIsVerifying(false);
+        return;
+      }
+
+      if (!razorpayKeyIdFromApi) {
+        throw new Error("Razorpay API Key is missing on the server. Please add RAZORPAY_KEY_ID to Environment Variables in Settings.");
+      }
+      
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        throw new Error("Failed to load Razorpay dynamic payment client. Check network connection.");
+      }
+
+      console.log(`[Razorpay] Initiating checkout for Order: ${rzpOrder.id}, Amount: ${rzpOrder.amount/100}`);
 
       const options = {
         key: razorpayKeyIdFromApi,
         amount: rzpOrder.amount,
         currency: rzpOrder.currency,
         name: "MANIFEST OS",
-        description: `${planToUse.name} Subscription Gateway`,
-        image: "https://manifesto-seeker.web.app/vite.svg", 
+        description: `${planToUse.name} Alignment`,
+        image: `${window.location.origin}/vite.svg`, 
         order_id: rzpOrder.id,
-        magic: true, // Specific Magic Checkout support
         prefill: {
           name: user?.displayName || "Manifest Seeker",
           email: user?.email || "",
-          contact: ""
+          contact: "9999999999" 
+        },
+        theme: {
+          color: "#10B981",
+          backdrop_color: "#030712"
         },
         config: {
           display: {
             blocks: {
               upi: {
-                name: "Pay via UPI / QR",
+                name: "UPI / Google Pay / PhonePe",
                 instruments: [
-                  {
-                    method: "upi"
-                  }
+                  { method: "upi" }
+                ]
+              },
+              other: {
+                name: "Cards, Net Banking & Wallets",
+                instruments: [
+                  { method: "card" },
+                  { method: "netbanking" },
+                  { method: "wallet" }
                 ]
               }
             },
-            sequence: ["block.upi"],
+            sequence: ["block.upi", "block.other"],
             preferences: {
               show_default_blocks: true
             }
           }
         },
-        theme: {
-          color: "#10B981",
-        },
         modal: {
           ondismiss: () => {
             setIsVerifying(false);
+            console.log("[Razorpay] Portal dismissed by user.");
             if (onToast) {
               onToast({
                 id: `dismissed-${Date.now()}`,
                 title: "Gateway Portal Disengaged",
-                body: "Checkout aborted by user. Alignment remains unchanged."
+                body: "Checkout aborted. Alignment remains unchanged."
               });
             }
           },
+          animation: true,
+          backdrop_close: false,
           escape: true,
           confirm_close: true
         },
@@ -6856,7 +6971,10 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature
+                razorpay_signature: response.razorpay_signature,
+                planName: planToUse.name,
+                billingCycle,
+                userId: user.uid
               })
             });
 
@@ -6875,23 +6993,27 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
                 updateOfflineProfile(planToUse.name, expiry);
               }
             } else {
-              await updateDoc(doc(db, 'users', user.uid), {
-                tier: planToUse.name,
-                subscriptionExpiry: Timestamp.fromDate(expiry),
-                updatedAt: serverTimestamp()
-              });
-              
               try {
-                await addDoc(collection(db, 'transactions'), {
-                  type: 'income',
-                  amount: inrAmount,
-                  label: user.displayName || user.email || 'Menifest Seeker',
-                  category: `${planToUse.name} Activation [${billingCycle}]`,
-                  ownerId: user.uid,
-                  timestamp: serverTimestamp()
+                await updateDoc(doc(db, 'users', user.uid), {
+                  tier: planToUse.name,
+                  subscriptionExpiry: Timestamp.fromDate(expiry),
+                  updatedAt: serverTimestamp()
                 });
-              } catch (txErr) {
-                console.error("Error logging transaction:", txErr);
+                
+                try {
+                  await addDoc(collection(db, 'transactions'), {
+                    type: 'income',
+                    amount: inrAmount,
+                    label: user.displayName || user.email || 'Menifest Seeker',
+                    category: `${planToUse.name} Activation [${billingCycle}]`,
+                    ownerId: user.uid,
+                    timestamp: serverTimestamp()
+                  });
+                } catch (txErr) {
+                  console.error("Error logging transaction:", txErr);
+                }
+              } catch (dbErr) {
+                console.error("[App Verification Local Sync Failover] Client-side manual collection write failed:", dbErr);
               }
             }
 
@@ -6945,86 +7067,14 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
     } catch (err: any) {
       setIsVerifying(false);
       console.error(err);
-      
-      setSandboxPlan(planToUse);
-      setFallbackErrorMessage(err.message || "Failed to establish monetary grid gateway.");
-      setShowSandboxFallback(true);
 
       if (onToast) {
         onToast({
           id: `overall-err-${Date.now()}`,
           title: "Alignment Interrupted",
-          body: `${err.message || 'Sub-frequency transfer pending.'} Quantum Sandbox fallback activated.`
+          body: err.message || "Failed to establish monetary grid gateway."
         });
       }
-    }
-  };
-
-  const handleSandboxBypass = async () => {
-    if (!user || user.isGuest) {
-      if (onToast) {
-        onToast({
-          id: `auth-err-${Date.now()}`,
-          title: "Alignment Interrupted",
-          body: "Bypass activation requires an identified user account."
-        });
-      }
-      return;
-    }
-    
-    setIsVerifying(true);
-    setShowSandboxFallback(false);
-    
-    try {
-      const planToUse = sandboxPlan || selectedPlanForCheckout || { name: 'Sovereign' };
-      const expiry = new Date();
-      if (billingCycle === 'monthly') expiry.setMonth(expiry.getMonth() + 1);
-      else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
-      else expiry.setFullYear(expiry.getFullYear() + 100);
-
-      // Perform direct firestore update
-      await updateDoc(doc(db, 'users', user.uid), {
-        tier: planToUse.name,
-        subscriptionExpiry: Timestamp.fromDate(expiry),
-        updatedAt: serverTimestamp()
-      });
-      
-      try {
-        await addDoc(collection(db, 'transactions'), {
-          type: 'income',
-          amount: getInrPrice(planToUse.name),
-          label: user.displayName || user.email || 'Manifest Seeker',
-          category: `${planToUse.name} Sandbox Override [${billingCycle}]`,
-          ownerId: user.uid,
-          timestamp: serverTimestamp()
-        });
-      } catch (txErr) {
-        console.error("Error logging sandbox transaction:", txErr);
-      }
-
-      try {
-        confetti();
-        playKachingSound();
-      } catch (e) {}
-
-      if (onToast) {
-        onToast({
-          id: `upgrade-sandbox-success-${Date.now()}`,
-          title: "ASCENSION MATRIX COMPLETE",
-          body: `You have successfully ascended to ${planToUse.name} via Quantum Sandbox configuration!`
-        });
-      }
-    } catch (err: any) {
-      console.error("Sandbox failure:", err);
-      if (onToast) {
-        onToast({
-          id: `sandbox-err-${Date.now()}`,
-          title: "Sandbox Disrupted",
-          body: err.message || "Failed to finalize sandbox integration."
-        });
-      }
-    } finally {
-      setIsVerifying(false);
     }
   };
 
@@ -7052,10 +7102,9 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
   ];
 
 
-    const pricingContent = (
+  return (
     <div className="h-full overflow-y-auto overflow-x-hidden no-scrollbar pb-24 lg:pb-32">
-      {/* Primary Conversion Layer - Optimized for At-a-Glance Visibility */}
-      <div className="max-w-5xl mx-auto px-4 lg:px-0 pt-4 flex flex-col gap-3 min-h-[90vh] justify-center">
+      <div className="max-w-5xl mx-auto px-4 lg:px-0 pt-4 flex flex-col gap-6 min-h-[90vh] justify-center">
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-1.5 mb-2">
             {[...Array(5)].map((_, i) => (
@@ -7071,157 +7120,67 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
           </p>
         </div>
 
-        {/* Dynamic Trust Infrastructure */}
-        <div className="flex flex-col items-center justify-center gap-3 mt-2 mb-2">
-          
-          <div className="bg-rose-500/10 border border-rose-500/30 text-rose-400 px-4 py-2.5 rounded-2xl max-w-lg text-center shadow-[0_0_20px_rgba(244,63,94,0.15)] flex flex-col items-center gap-1">
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] italic flex items-center gap-1.5">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
-              </span>
-              Limited 1-Month Offer
-            </span>
-            <span className="text-xs sm:text-sm font-bold text-white/90">
-              Prices increase significantly next month. Lifetime tier will be permanently removed. Secure this rate forever.
-            </span>
-          </div>
+        {/* Sovereign Access Dashboard */}
+        <div className="max-w-3xl mx-auto w-full relative z-10 px-4 md:px-0">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+            className="relative p-8 sm:p-12 rounded-[2.5rem] border border-emerald-500/20 shadow-[0_0_50px_rgba(16,185,129,0.06),_0_0_1px_rgba(16,185,129,0.25)] ring-4 ring-emerald-500/5 overflow-hidden bg-gradient-to-b from-zinc-950 to-black text-white"
+          >
+            <div className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-500/10 rounded-full blur-[80px] pointer-events-none" />
+            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-teal-500/10 rounded-full blur-[80px] pointer-events-none" />
 
-          <div className="flex flex-col items-center justify-center gap-4 mt-1">
-            <div className="flex bg-white/[0.03] p-1.5 rounded-2xl border border-white/10 shadow-inner backdrop-blur-xl">
-             {[
-               { id: 'monthly', label: 'Monthly' },
-               { id: 'yearly', label: 'Yearly' },
-               { id: 'lifetime', label: 'Lifetime' }
-             ].map((cycle) => (
-               <button
-                 key={cycle.id}
-                 onClick={() => setBillingCycle(cycle.id as any)}
-                 className={`relative px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-500 cursor-pointer ${billingCycle === cycle.id ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-black shadow-[0_4px_20px_rgba(16,185,129,0.25)] font-black' : 'text-stardust/40 hover:text-white'}`}
-               >
-                 {cycle.label}
-                 {cycle.id === 'yearly' && billingCycle !== cycle.id && <span className="absolute -top-1.5 -right-1 px-2 py-0.5 bg-emerald-500 text-black text-[6px] font-black rounded-full shadow-lg">SAVE 30%</span>}
-               </button>
-             ))}
+            <div className="flex items-center justify-between gap-4 border-b border-white/5 pb-8 mb-8 flex-col sm:flex-row">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center border border-emerald-500/20 shadow-lg">
+                  <Infinity className="w-8 h-8 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black tracking-tight uppercase italic text-white flex items-center gap-2">
+                    SOVEREIGN ACTIVE STATE
+                  </h3>
+                  <p className="text-[9px] font-black tracking-widest uppercase text-emerald-400 font-mono">
+                    STATUS: PERMANENTLY INITIALIZED
+                  </p>
+                </div>
+              </div>
+              <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-4 py-2 rounded-2xl text-[9px] font-black uppercase tracking-[0.25em] italic">
+                👑 LIFETIME MASTER ACCESS
+              </div>
             </div>
 
+            <p className="text-sm text-stardust/70 leading-relaxed mb-8 text-center sm:text-left">
+              The Sovereign expansion is completely active on your profile. The alignment keys are calibrated, granting you unrestricted permission logs, boundless ritual slots, and complete priority access to all supreme resources. No billing cycles, constraints, or paywalls apply.
+            </p>
 
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto w-full relative z-10 px-4 md:px-0">
-          {plans.map((plan, i) => {
-            const isRecommended = plan.recommended;
-            return (
-              <motion.div
-                key={plan.name}
-                initial={{ opacity: 0, y: 25 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.7, delay: i * 0.15 }}
-                onClick={() => {
-                  if (plan.isPremium && !isVerifying) {
-                    executePayment(plan);
-                  }
-                }}
-                className={`relative p-8 sm:p-10 rounded-[2.5rem] border flex flex-col select-none cursor-pointer transition-all duration-500 bg-white ${
-                  isRecommended 
-                    ? 'border-emerald-400/80 shadow-[0_24px_60px_rgba(16,185,129,0.06),_0_0_1px_rgba(16,185,129,0.25)] hover:border-emerald-500 hover:scale-[1.01] active:scale-[0.99] border-2 ring-4 ring-emerald-400/5' 
-                    : 'border-slate-200/80 shadow-[0_20px_50px_rgba(0,0,0,0.03)] hover:border-slate-400/40 hover:scale-[1.01] active:scale-[0.99] border'
-                }`}
-              >
-                {/* Premium badge at the top right of the recommended path */}
-                {isRecommended && (
-                  <div className="absolute top-4 right-8 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[7.5px] font-black uppercase tracking-[0.25em] py-1.5 px-4 rounded-full italic shadow-md">
-                    👑 MASTER TIER
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+              {[
+                { title: "Infinite Rituals", desc: "Design boundless simultaneity structure channels without limit boundaries." },
+                { title: "Desire Convergence", desc: "Unlocking custom graphic metrics tracking to accelerate reality targets." },
+                { title: "Vibe Academy Unlock", desc: "Interactive access to full audio catalogs, meditation streams, and guides." },
+                { title: "Flow Velocity Tracking", desc: "Adaptive tone analyzers and financial balance sheets active continuously." }
+              ].map((feat, idx) => (
+                <div key={idx} className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-lg bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />
                   </div>
-                )}
-
-                <div className="mb-4">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className={`text-[8.5px] font-black uppercase tracking-[0.35em] font-mono ${isRecommended ? 'text-emerald-600' : 'text-slate-400'}`}>
-                      {isRecommended ? 'Sovereign Path Expansion' : 'Baseline Frequency Path'}
-                    </span>
-                  </div>
-                  <h3 className="text-3xl font-black uppercase tracking-tight text-slate-900 font-sans italic">
-                    {plan.name} <span className={isRecommended ? "text-emerald-500" : "text-slate-500"}>Pathway</span>
-                  </h3>
-                </div>
-
-                <p className="text-[11.5px] font-medium tracking-wide text-slate-500 leading-relaxed mb-6 font-sans">
-                  {plan.description}
-                </p>
-                
-                {/* Price Display */}
-                <div className={`rounded-2xl p-5 mb-6 border flex items-baseline justify-between transition-all duration-300 ${
-                  isRecommended 
-                    ? 'bg-emerald-50/40 border-emerald-100' 
-                    : 'bg-slate-50 border-slate-100'
-                }`}>
                   <div>
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block mb-0.5 font-mono">ENERGY COST</span>
-                    <span className="text-4xl lg:text-5xl font-black tracking-tighter text-slate-950 font-sans">
-                      {currencySymbol}{plan.price}
-                    </span>
-                  </div>
-                  <div className="text-right">
-                    <span className={`font-mono text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md shadow-sm ${
-                      isRecommended 
-                        ? 'bg-emerald-500/15 text-emerald-800' 
-                        : 'bg-slate-200/50 text-slate-700'
-                    }`}>
-                      {plan.name === 'Novice' ? 'Unlimited Access' : billingCycle === 'lifetime' ? 'One-Time Only' : `${billingCycle}`}
-                    </span>
+                    <h4 className="text-[11px] font-black uppercase tracking-wider text-white mb-1 font-sans">{feat.title}</h4>
+                    <p className="text-[10px] text-stardust/50 leading-relaxed font-sans">{feat.desc}</p>
                   </div>
                 </div>
+              ))}
+            </div>
 
-                {/* Features Checklist */}
-                <div className="space-y-3 mb-8 flex-grow py-4 border-t border-slate-100">
-                  <span className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-400 block mb-3 font-mono">Inclusions</span>
-                  {plan.features.map(feature => (
-                    <div key={feature} className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-slate-700 transition-all">
-                      <div className={`w-5 h-5 rounded-lg flex items-center justify-center border transition-all ${
-                        isRecommended 
-                          ? 'bg-emerald-50 border-emerald-200' 
-                          : 'bg-slate-50 border-slate-100'
-                      }`}>
-                        <Check className={`w-3 h-3 stroke-[3] ${
-                          isRecommended ? 'text-emerald-500' : 'text-slate-400'
-                        }`} />
-                      </div>
-                      <span className="truncate">{feature}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Action button */}
-                {plan.isPremium ? (
-                  <motion.button
-                    whileHover={{ scale: 1.015 }}
-                    whileTap={{ scale: 0.985 }}
-                    disabled={isVerifying}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      executePayment(plan);
-                    }}
-                    className="w-full py-4 rounded-2xl font-black uppercase text-[11px] tracking-[0.4em] transition-all flex items-center justify-center gap-3 italic cursor-pointer shadow-[0_12px_24px_rgba(16,185,129,0.2)] bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-white hover:brightness-105 duration-300"
-                  >
-                    {isVerifying ? (
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <>Initiate Access <ArrowRight className="w-4 h-4 animate-pulse text-white" /></>
-                    )}
-                  </motion.button>
-                ) : (
-                  <div className="w-full py-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] italic text-center shadow-inner">
-                     Active Baseline Path
-                  </div>
-                )}
-              </motion.div>
-            );
-          })}
+            <div className="w-full p-4 rounded-xl border border-dashed border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-[9px] font-black uppercase tracking-[0.3em] italic text-center">
+              🛡️ END-TO-END ENCRYPTED DECENTRALIZED NODE ACTIVE
+            </div>
+          </motion.div>
         </div>
 
         {/* Scroll Call-to-Action */}
-        <div className="flex flex-col items-center mt-8 animate-bounce opacity-25">
+        <div className="flex flex-col items-center mt-4 animate-bounce opacity-25">
           <span className="text-[7px] font-black text-white uppercase tracking-[0.6em] mb-2 italic">Evidence Below</span>
           <ChevronDown className="w-4 h-4 text-emerald-500" />
         </div>
@@ -7376,50 +7335,88 @@ const PricingView = ({ setView, user, tier, isMobile, userProfile, updateOffline
              Secure Infrastructure • Personal Data Residency
            </p>
         </div>
+
+        {isAdmin && (
+          <div className="mt-8 space-y-6 pt-12 pb-12 px-6 border-t border-white/10 max-w-4xl mx-auto w-full">
+            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              Admin System Status
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-white/5 p-4 rounded-xl border border-white/5">
+                <div className="text-sm font-medium text-white/40 mb-3 flex items-center justify-between">
+                  Razorpay Integration
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${systemStatus?.razorpay?.mode === 'LIVE' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                    {systemStatus?.razorpay?.mode || 'UNKNOWN'}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-white/60">Using Key</span>
+                    <span className={`text-sm font-mono ${systemStatus?.razorpay?.id_found ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {systemStatus?.razorpay?.id_found ? `READY (${systemStatus.razorpay.final_id_prefix}...)` : 'MISSING'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-white/60">Secret Status</span>
+                    <span className={`text-sm font-mono ${systemStatus?.razorpay?.secret_found ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {systemStatus?.razorpay?.secret_found ? `LOADED (${systemStatus.razorpay.secret_len} chars)` : 'MISSING'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-white/60">Env Key ID</span>
+                    <span className="text-sm font-mono text-white/40">
+                      {systemStatus?.razorpay?.env_id || 'NONE'}
+                    </span>
+                  </div>
+                  {systemStatus?.razorpay?.using_emergency_fallback && (
+                    <div className="text-[10px] text-emerald-400/60 mt-1 italic">
+                      Using emergency fallback keys (SvSaxz... / 72njXo...).
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white/5 p-4 rounded-xl border border-white/5">
+                <div className="text-sm font-medium text-white/40 mb-3">Firebase & Services</div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-white/60">Project ID</span>
+                    <span className="text-sm font-mono text-emerald-400 truncate ml-4">
+                      {systemStatus?.firebase?.projectId || 'Not Init'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-white/60">Resend (Email)</span>
+                    <span className={`text-sm font-mono ${systemStatus?.email?.resend ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {systemStatus?.email?.resend ? 'READY' : 'MISSING'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/admin/system-check');
+                  const data = await res.json();
+                  setSystemStatus(data);
+                  onToast?.({ message: 'System status refreshed', type: 'success' });
+                } catch (e) {
+                  onToast?.({ message: 'Failed to refresh status', type: 'error' });
+                }
+              }}
+              className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold text-white transition-all border border-white/10 flex items-center justify-center gap-2"
+            >
+              <RefreshCcw className="w-3 h-3" />
+              Refresh Diagnostic Check
+            </button>
+          </div>
+        )}
       </div>
+
     </div>
-  );
-
-
-  return (
-    <>
-      {pricingContent}
-      {showSandboxFallback && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-sm p-6 rounded-[2.5rem] bg-zinc-950 border border-emerald-500/30 text-center relative overflow-hidden shadow-[0_0_50px_rgba(16,185,129,0.2)]"
-          >
-            <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-4">
-              <Sparkles className="w-6 h-6 text-emerald-400" />
-            </div>
-            
-            <h3 className="text-lg font-black uppercase tracking-tight text-white mb-2 italic">Quantum Activation Stage</h3>
-            <p className="text-[9px] font-black uppercase tracking-widest text-emerald-400 font-mono mb-4 font-black">Alignment Node Sandbox Bypass</p>
-            
-            <div className="text-[9px] font-medium text-stardust/60 leading-relaxed uppercase tracking-wider mb-6 text-left bg-black/40 p-4 rounded-xl border border-white/5 space-y-2">
-              <p className="text-rose-400/80 font-bold uppercase font-black">Node State: Custom Merchant Node is pending KYC verification, making it currently locked for external customer emails.</p>
-              <p className="text-white/70 italic">To prevent any ascension blockade, we have initialized standard Vibe OS Sandbox Override. This directly completes persistent level upgrades on your cloud profile.</p>
-            </div>
-            
-            <div className="space-y-2">
-              <button 
-                onClick={handleSandboxBypass}
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 text-black font-black uppercase text-xs tracking-widest hover:brightness-110 active:scale-95 transition-all shadow-[0_0_20px_rgba(52,211,153,0.3)]"
-              >
-                ACTIVATE VIA SANDBOX BYPASS
-              </button>
-              <button 
-                onClick={() => setShowSandboxFallback(false)}
-                className="w-full py-3 rounded-xl bg-white/5 text-white/40 hover:text-white font-black uppercase text-[10px] tracking-widest hover:bg-white/10 transition-all"
-              >
-                Cancel Overlay
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-    </>
   );
 };

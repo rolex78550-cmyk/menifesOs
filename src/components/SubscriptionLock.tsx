@@ -38,7 +38,7 @@ export const SubscriptionLock = ({ onUpgrade, onLogout, isAdmin }: SubscriptionL
           </h2>
           
           <p className="text-stardust/60 text-base leading-relaxed mb-10 font-medium">
-            Your 24-hour celestial trial session has concluded. To sustain your momentum and continue your manifestation journey, please activate the resonance protocol.
+            Your 72-hour celestial trial session has concluded. To sustain your momentum and continue your manifestation journey, please activate the resonance protocol.
           </p>
 
           <div className="space-y-4 mb-10">

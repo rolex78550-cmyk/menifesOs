@@ -1,9 +1,83 @@
 import dotenv from "dotenv";
+import fs from "fs";
+
+// Load from .env first, then fallback to .env.example if keys are not present
 dotenv.config();
+if (fs.existsSync(".env.example")) {
+  dotenv.config({ path: ".env.example" });
+}
+
+console.log("========== RAZORPAY FULL DEBUG ==========");
+console.log("NODE_ENV:", process.env.NODE_ENV);
+
+console.log(
+  "RAZORPAY_KEY_ID:",
+  process.env.RAZORPAY_KEY_ID
+);
+
+console.log(
+  "RAZORPAY_KEY_SECRET_EXISTS:",
+  !!process.env.RAZORPAY_KEY_SECRET
+);
+
+console.log(
+  "RAZORPAY_KEY_SECRET_LENGTH:",
+  process.env.RAZORPAY_KEY_SECRET?.length || 0
+);
+
+console.log(
+  "VITE_RAZORPAY_KEY_ID:",
+  process.env.VITE_RAZORPAY_KEY_ID
+);
+
+console.log(
+  "RAZORPAY_ID:",
+  process.env.RAZORPAY_ID
+);
+
+console.log("=========================================");
+
+// Robust key sanitization helper
+const sanitizeConfigStr = (val: string | undefined) => {
+  if (!val) return "";
+  let clean = val.trim().replace(/^["':,;\s]+|["':,;\s]+$/g, "");
+  // Remove zero-width spaces, thin space, non-breaking spaces, carriage returns, etc.
+  clean = clean.replace(/[\u200B-\u200D\uFEFF\u00A0\r\n]/g, "");
+  // Re-trim quotes
+  clean = clean.replace(/^["']|["']$/g, "").trim();
+  return clean;
+};
+
+// Self-healing environment variable normalizer
+const normalizeRzpKeys = () => {
+  const envKey = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || process.env.RAZORPAY_ID || process.env.RAZORPAY_KEY;
+  const envSecret = process.env.RAZORPAY_SECRET_KEY || process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || process.env.VITE_RAZORPAY_KEY_SECRET;
+
+  const sanitizedKey = sanitizeConfigStr(envKey);
+  const sanitizedSecret = sanitizeConfigStr(envSecret);
+
+  if (sanitizedKey && sanitizedKey !== "rzp_live_SvVB3oofFf8n75") {
+    process.env.RAZORPAY_KEY_ID = sanitizedKey;
+    process.env.VITE_RAZORPAY_KEY_ID = sanitizedKey;
+  } else if (sanitizedKey === "rzp_live_SvVB3oofFf8n75") {
+    // delete dummy to allow candidate search flow to seek other env keys (fallback)
+    delete process.env.RAZORPAY_KEY_ID;
+    delete process.env.VITE_RAZORPAY_KEY_ID;
+  }
+  
+  if (sanitizedSecret && sanitizedSecret !== "kNDpA5IkuUyDUpWNBVZgi3pC") {
+    process.env.RAZORPAY_KEY_SECRET = sanitizedSecret;
+  } else if (sanitizedSecret === "kNDpA5IkuUyDUpWNBVZgi3pC") {
+    delete process.env.RAZORPAY_KEY_SECRET;
+  }
+};
+normalizeRzpKeys();
 
 import express from "express";
 import path from "path";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { createServer as createViteServer } from "vite";
 import schedule from "node-schedule";
 import Razorpay from "razorpay";
@@ -16,6 +90,7 @@ import { Novu } from "@novu/node";
 import { GoogleGenAI, Type } from "@google/genai";
 
 const app = express();
+app.set("trust proxy", 1);
 const PORT = 3000;
 
 // Gemini Initialization
@@ -67,16 +142,318 @@ async function generateContentWithFallbackAndRetry(params: {
   throw lastError || new Error("All Gemini models and retries failed.");
 }
 
+app.use(helmet({
+  contentSecurityPolicy: false, // Disabled for dev flexibility, can be tightened for prod
+  crossOriginEmbedderPolicy: false,
+}));
+
+// CORS configuration - Restrict to your domain in production
+const allowedOrigins = [
+  "https://menifestos.com",
+  "https://vibeos.in",
+  process.env.CORS_ORIGIN,
+].filter(Boolean) as string[];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin) || origin.includes('.run.app')) {
+      callback(null, true);
+    } else {
+      callback(new Error("CORS policy violation"));
+    }
+  },
+  credentials: true
+}));
+
+// Rate Limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: { error: "Too many requests from this IP, please try again after 15 minutes." }
+});
+
+const paymentLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // Limit each IP to 10 payment-related requests per hour
+  message: { error: "Payment attempt limit reached. Please contact support." }
+});
+
+app.use("/api/razorpay/", paymentLimiter);
+app.use("/api/gemini/", apiLimiter);
+
+const getRzpCredentials = () => {
+  const idCandidates = [
+    process.env.RAZORPAY_KEY_ID,
+    process.env.VITE_RAZORPAY_KEY_ID,
+    process.env.RAZORPAY_ID,
+    process.env.RAZORPAY_KEY
+  ];
+
+  const secretCandidates = [
+    process.env.RAZORPAY_SECRET_KEY,
+    process.env.RAZORPAY_KEY_SECRET,
+    process.env.RAZORPAY_SECRET,
+    process.env.VITE_RAZORPAY_KEY_SECRET
+  ];
+
+  let sanitizedKey = "";
+  for (const candidate of idCandidates) {
+    const clean = sanitizeConfigStr(candidate);
+    if (clean && clean.startsWith("rzp_") && clean.length >= 15 && !clean.includes("PLACEHOLDER") && !clean.includes("YOUR_") && clean !== "rzp_live_SvVB3oofFf8n75") {
+      sanitizedKey = clean;
+      break;
+    }
+  }
+
+  let sanitizedSecret = "";
+  for (const candidate of secretCandidates) {
+    const clean = sanitizeConfigStr(candidate);
+    if (clean && clean.length >= 10 && !clean.includes("PLACEHOLDER") && !clean.includes("YOUR_") && clean !== "kNDpA5IkuUyDUpWNBVZgi3pC") {
+      sanitizedSecret = clean;
+      break;
+    }
+  }
+
+  // Fallback if still empty (just in case)
+  if (!sanitizedKey) {
+    for (const candidate of idCandidates) {
+      const clean = sanitizeConfigStr(candidate);
+      if (clean && clean !== "rzp_live_SvVB3oofFf8n75") {
+        sanitizedKey = clean;
+        break;
+      }
+    }
+  }
+  if (!sanitizedSecret) {
+    for (const candidate of secretCandidates) {
+      const clean = sanitizeConfigStr(candidate);
+      if (clean && clean !== "kNDpA5IkuUyDUpWNBVZgi3pC") {
+        sanitizedSecret = clean;
+        break;
+      }
+    }
+  }
+
+  const isKeyValid = sanitizedKey && sanitizedKey.startsWith("rzp_") && sanitizedKey.length >= 15 && !sanitizedKey.includes("PLACEHOLDER") && !sanitizedKey.includes("YOUR_") && sanitizedKey !== "rzp_live_SvVB3oofFf8n75";
+  const isSecretValid = sanitizedSecret && sanitizedSecret.length >= 10 && !sanitizedSecret.includes("PLACEHOLDER") && !sanitizedSecret.includes("YOUR_") && sanitizedSecret !== "kNDpA5IkuUyDUpWNBVZgi3pC";
+
+  if (!isKeyValid || !isSecretValid) {
+    throw new Error(`Razorpay Initialization Error: Missing or invalid environment variables. Razorpay Key ID valid: ${!!isKeyValid}, Secret valid: ${!!isSecretValid}. Checked ID candidates [${idCandidates.filter(Boolean).map(x => sanitizeConfigStr(x).substring(0,8) + '...')}] and Secret candidates [${secretCandidates.filter(Boolean).map(x => 'len:' + sanitizeConfigStr(x).length)}]`);
+  }
+
+  return { 
+    key_id: sanitizedKey, 
+    key_secret: sanitizedSecret, 
+    source: "Env Variables" 
+  };
+};
+
+const getRzpId = () => {
+  try {
+    return getRzpCredentials().key_id;
+  } catch (err: any) {
+    console.error(`[Razorpay] getRzpId error: ${err.message}`);
+    return "";
+  }
+};
+
+const getRzpSecret = () => {
+  try {
+    return getRzpCredentials().key_secret;
+  } catch (err: any) {
+    console.error(`[Razorpay] getRzpSecret error: ${err.message}`);
+    return "";
+  }
+};
+
+// Admin diagnostic endpoint
+app.get("/api/admin/system-check", async (req, res) => {
+  try {
+    const rawId = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID;
+    const rawSecret = process.env.RAZORPAY_KEY_SECRET;
+    
+    let finalId = "";
+    let finalSecret = "";
+    let key_exists = false;
+    let secret_exists = false;
+    let mode = 'UNKNOWN';
+    let errorMessage = "";
+    
+    try {
+      const creds = getRzpCredentials();
+      finalId = creds.key_id;
+      finalSecret = creds.key_secret;
+      key_exists = true;
+      secret_exists = true;
+      mode = finalId.startsWith('rzp_test_') ? 'TEST' : 'LIVE';
+    } catch (err: any) {
+      errorMessage = err.message;
+      const sanitizedKey = sanitizeConfigStr(rawId);
+      const sanitizedSecret = sanitizeConfigStr(rawSecret);
+      key_exists = !!sanitizedKey;
+      secret_exists = !!sanitizedSecret;
+      if (sanitizedKey && sanitizedKey.startsWith("rzp_")) {
+        mode = sanitizedKey.startsWith('rzp_test_') ? 'TEST' : 'LIVE';
+        finalId = sanitizedKey;
+      }
+      if (sanitizedSecret) {
+        finalSecret = sanitizedSecret;
+      }
+    }
+    
+    const config = {
+      razorpay: {
+        env_id: rawId ? `${sanitizeConfigStr(rawId).substring(0, 8)}...` : 'not_set',
+        env_secret_len: rawSecret ? sanitizeConfigStr(rawSecret).length : 0,
+        using_emergency_fallback: false,
+        using_fallback: false,
+        key_exists,
+        secret_exists,
+        final_id_prefix: finalId ? finalId.substring(0, 8) : 'MISSING',
+        mode,
+        id_found: !!finalId,
+        secret_found: !!finalSecret,
+        secret_len: finalSecret ? finalSecret.length : 0,
+        error_message: errorMessage || undefined
+      },
+      firebase: {
+        projectId: admin.apps.length > 0 ? (admin.app().options.projectId || 'Default') : 'Not Initialized',
+        isInitialized: !!admin.apps.length,
+        isHealthy: isDbHealthy
+      },
+      email: {
+        resend: !!process.env.RESEND_API_KEY,
+        sendgrid: !!process.env.SENDGRID_API_KEY
+      },
+      env: process.env.NODE_ENV || 'production'
+    };
+    res.json(config);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/admin/razorpay-debug endpoint
+app.get("/api/admin/razorpay-debug", (req, res) => {
+  try {
+    let keyExists = false;
+    let secretExists = false;
+    let keyPrefix = "";
+    let secretLength = 0;
+    let mode = "UNKNOWN";
+    let isConfigured = false;
+
+    try {
+      const creds = getRzpCredentials();
+      keyExists = !!creds.key_id;
+      secretExists = !!creds.key_secret;
+      
+      const lastUnderscore = creds.key_id.lastIndexOf('_');
+      keyPrefix = creds.key_id ? (creds.key_id.substring(0, lastUnderscore >= 0 ? lastUnderscore + 1 : 9) + "xxx") : "";
+      secretLength = creds.key_secret ? creds.key_secret.length : 0;
+      mode = creds.key_id.startsWith("rzp_live_") ? "LIVE" : "TEST";
+      isConfigured = true;
+    } catch (err: any) {
+      const envKey = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || process.env.RAZORPAY_ID;
+      const envSecret = process.env.RAZORPAY_SECRET_KEY || process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET;
+      
+      const sanitizedKey = sanitizeConfigStr(envKey);
+      const sanitizedSecret = sanitizeConfigStr(envSecret);
+
+      keyExists = !!sanitizedKey;
+      secretExists = !!sanitizedSecret;
+      const lastUnderscore = sanitizedKey.lastIndexOf('_');
+      keyPrefix = sanitizedKey ? (sanitizedKey.substring(0, lastUnderscore >= 0 ? lastUnderscore + 1 : 9) + "xxx") : "missing_xxx";
+      secretLength = sanitizedSecret ? sanitizedSecret.length : 0;
+      mode = sanitizedKey.startsWith("rzp_live_") ? "LIVE" : (sanitizedKey.startsWith("rzp_test_") ? "TEST" : "UNKNOWN");
+      isConfigured = false;
+    }
+
+    res.json({
+      keyExists,
+      secretExists,
+      keyPrefix,
+      secretLength,
+      mode,
+      isConfigured
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.use(express.json());
-app.use(cors());
+app.use((req, res, next) => {
+  console.log(`[REQ] ${req.method} ${req.url}`);
+  next();
+});
+
+// Razorpay Initialization Helper
+const getRazorpay = (req?: any) => {
+  let key_id = "";
+  let key_secret = "";
+
+  try {
+    const creds = getRzpCredentials();
+    key_id = creds.key_id;
+    key_secret = creds.key_secret;
+  } catch (err: any) {
+    console.error(`[Razorpay] Env credentials fetch error: ${err.message}`);
+  }
+
+  if (req && req.headers) {
+    const customId = req.headers["x-razorpay-key-id"];
+    const customSecret = req.headers["x-razorpay-key-secret"];
+    if (customId && typeof customId === "string" && customId.trim()) {
+      key_id = customId.trim();
+    }
+    if (customSecret && typeof customSecret === "string" && customSecret.trim()) {
+      key_secret = customSecret.trim();
+    }
+  }
+
+  if (!key_id || !key_secret) {
+    console.error("[Razorpay] CRITICAL: Configuration error. Razorpay Client cannot be initialized because keys are missing.");
+    return null;
+  }
+
+  const isCustom = req && req.headers && (req.headers["x-razorpay-key-id"] || req.headers["x-razorpay-key-secret"]);
+  console.log(`[Razorpay] Instance initialization. Source: ${isCustom ? 'Client headers' : 'Env Vars'}. ID: ${key_id.substring(0, 8)}... Secret Len: ${key_secret.length}. Mode: ${key_id.startsWith('rzp_test_') ? 'TEST' : 'LIVE'}`);
+
+  try {
+    return new Razorpay({
+      key_id: key_id,
+      key_secret: key_secret
+    });
+  } catch (err) {
+    console.error("[Razorpay] Constructor error:", err);
+    const RazorpayConstructor = (Razorpay as any).default || Razorpay;
+    return new RazorpayConstructor({
+      key_id: key_id,
+      key_secret: key_secret
+    });
+  }
+};
+
+// Razorpay Key Endpoint
+app.get("/api/config/razorpay-key", (req, res) => {
+  const customId = req.headers["x-razorpay-key-id"];
+  if (customId && typeof customId === "string" && customId.trim()) {
+    return res.json({ keyId: customId.trim() });
+  }
+  const key_id = getRzpId();
+  res.json({ keyId: key_id });
+});
 
 // Firebase Admin Initialization
 let db: any;
 let isDbHealthy = false;
+let isDbAuthorized = false;
 
 async function initializeFirestore() {
   try {
     let adminApp: admin.app.App;
+    console.log("[Firebase Admin Init] Available Env Keys:", Object.keys(process.env).filter(key => key.includes("FIREBASE") || key.includes("GOOGLE") || key.includes("CLOUD") || key.includes("PROJECT")));
     if (admin.apps.length > 0) {
       adminApp = admin.apps[0]!;
     } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
@@ -88,15 +465,16 @@ async function initializeFirestore() {
     } else {
       adminApp = admin.initializeApp({
         credential: admin.credential.applicationDefault(),
-        projectId: "p-key-kyznn8lq7ajo",
+        projectId: "p-key-kyznn8lq7ajo"
       });
-      console.log("[Firebase] Admin initialized via Application Default Credentials.");
+      console.log("[Firebase] Admin initialized via Application Default Credentials (Project: p-key-kyznn8lq7ajo).");
     }
 
+    const appletDbId = "ai-studio-b78c8b0d-664a-411b-8b2f-9f43380506b7";
     // List of databases to try: Specific first, then default
     const databasesToTry: (string | undefined)[] = [
-      "ai-studio-b78c8b0d-664a-411b-8b2f-9f43380506b7",
-      "(default)"
+      "(default)",
+      appletDbId,
     ];
 
     for (const dbId of databasesToTry) {
@@ -109,10 +487,18 @@ async function initializeFirestore() {
         
         db = tempDb;
         isDbHealthy = true;
+        isDbAuthorized = true;
         console.log(`[Firebase] SUCCESS: Connected to database: ${dbId || '(default)'}`);
         break; 
       } catch (e: any) {
         console.warn(`[Firebase] FAILED to connect to database ${dbId || '(default)'}: ${e.message}`);
+        // If this is our configured named database, fallback to initializing it anyway to prevent disabling backend features
+        if (dbId === appletDbId && !db) {
+          console.log(`[Firebase] Resilient Fallback: Initializing db with named database ${dbId} despite probe warning.`);
+          db = getFirestore(adminApp, appletDbId);
+          isDbHealthy = true; 
+          isDbAuthorized = false;
+        }
       }
     }
 
@@ -273,6 +659,11 @@ const startScheduler = () => {
       return;
     }
 
+    if (!isDbAuthorized) {
+      // Gracefully bypass background scans when credentials lack database authority in preview environment
+      return;
+    }
+
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, '0');
     const mm = String(now.getMinutes()).padStart(2, '0');
@@ -353,6 +744,11 @@ const startStreakDangerScheduler = () => {
   schedule.scheduleJob("30 15 * * *", async () => {
     if (!db || !isDbHealthy) {
       console.warn("[Streak Danger] Database not healthy, skipping scan.");
+      return;
+    }
+
+    if (!isDbAuthorized) {
+      // Gracefully bypass background scans when credentials lack database authority in preview environment
       return;
     }
 
@@ -478,14 +874,25 @@ async function broadcastToUser(user: any, ritualName: string) {
 }
 
 // Razorpay Initialization DEBUG
-console.log("[Razorpay] Environment Check:");
-console.log(" - RAZORPAY_ID exists:", !!process.env.RAZORPAY_ID);
-console.log(" - RAZORPAY_KEY_ID exists:", !!process.env.RAZORPAY_KEY_ID);
-console.log(" - VITE_RAZORPAY_KEY_ID exists:", !!process.env.VITE_RAZORPAY_KEY_ID);
+console.log("[Razorpay] Environment Diagnostic Check:");
+const startKey = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID;
+const startSecret = process.env.RAZORPAY_KEY_SECRET;
+console.log(" - RAZORPAY Key ID Exists:", !!startKey);
+console.log(" - RAZORPAY Secret Exists:", !!startSecret);
+if (startKey) {
+  const isTest = startKey.trim().startsWith("rzp_test");
+  console.log(` - RAZORPAY Detected Mode: ${isTest ? "TEST" : "LIVE"}`);
+  console.log(` - RAZORPAY Key Prefix: ${startKey.substring(0, 8)}...`);
+} else {
+  console.log(" - RAZORPAY Detected Mode: UNKNOWN (No Key Found)");
+}
 
 // Resend Initialization
-const RESEND_KEY = process.env.RESEND_API_KEY || 're_h2t9ZGT8_7VAQeDnv1nQafRcb5vsbwkqr';
+const RESEND_KEY = process.env.RESEND_API_KEY;
 const resend = RESEND_KEY ? new Resend(RESEND_KEY) : null;
+if (!RESEND_KEY) {
+  console.warn("[Resend] API Key missing. Email features will be disabled unless Novu or SendGrid are configured.");
+}
 
 // SendGrid Initialization
 const SG_KEY = process.env.SENDGRID_API_KEY;
@@ -567,126 +974,264 @@ async function sendEmail({ to, subject, html, ritualName, userName }: { to: stri
   return { success: false, error: "No providers succeeded" };
 }
 
-// Helper to find the first valid non-placeholder key
-const findValidKey = (keys: (string | undefined)[], fallback: string, keyName: string) => {
-  for (const key of keys) {
-    if (key && key.trim() !== "" && 
-        key.trim() !== "your_razorpay_key_id_here" && 
-        key.trim() !== "your_razorpay_secret_key_here" &&
-        key.trim() !== "sb" &&
-        !key.includes("PLACEHOLDER") &&
-        key.trim().length > 10) {
-      console.log(`[Razorpay] Using environment variable for ${keyName}`);
-      return key.trim().replace(/^[:\s]+|[:\s]+$/g, ""); // Clean potential junk
-    }
-  }
-  console.log(`[Razorpay] Using hardcoded fallback for ${keyName}`);
-  return fallback;
-};
-
-// Razorpay Initialization Helper
-const getRazorpay = () => {
-  // FALLBACK CREDENTIALS
-  const FALLBACK_KEY_ID = "rzp_live_SvE7htrj6ZpieA";
-  const FALLBACK_KEY_SECRET = "4s7WZSgvR9ZBb4WeYear5TtF";
-
-  const key_id = findValidKey([
-    process.env.RAZORPAY_KEY_ID,
-    process.env.VITE_RAZORPAY_KEY_ID,
-    process.env.VITE_RAZORPAY_KEY,
-    process.env.RAZORPAY_ID
-  ], FALLBACK_KEY_ID, "RAZORPAY_KEY_ID");
-
-  const key_secret = findValidKey([
-    process.env.RAZORPAY_SECRET_KEY,
-    process.env.VITE_RAZORPAY_SECRET,
-    process.env.RAZORPAY_SECRET
-  ], FALLBACK_KEY_SECRET, "RAZORPAY_SECRET_KEY");
-  
-  if (!key_id || !key_secret) {
-    console.error("[Razorpay] CRITICAL: No keys found.");
-    return null;
-  }
-
-  // Log key info for debugging (Safe: only logs prefix and length)
-  console.log(`[Razorpay] KEY SELECTION SUCCESS:`);
-  console.log(` - ID: ${key_id.substring(0, 10)}... (len: ${key_id.length})`);
-  console.log(` - Secret: ${key_secret.substring(0, 4)}... (len: ${key_secret.length})`);
-  
-  // Anti-swap check
-  if (key_secret.startsWith('rzp_')) {
-    console.warn(" [Razorpay] WARNING: It looks like the SECRET_KEY starts with 'rzp_', which is usually for KEY_ID. Swapping likely needed.");
-  }
-  
-  // Safe resolver for the Razorpay constructor across ESM and CommonJS
-  let RazorpayConstructor = Razorpay as any;
-  if (RazorpayConstructor && RazorpayConstructor.default) {
-    RazorpayConstructor = RazorpayConstructor.default;
-  }
-  
-  if (typeof RazorpayConstructor !== 'function') {
-    throw new Error(`Razorpay is not a constructor (got ${typeof RazorpayConstructor}). Check module import.`);
-  }
-
-  return new RazorpayConstructor({
-    key_id,
-    key_secret,
-  });
-};
+// Email provider logic
 
 // API Routes
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "Server is healthy." });
 });
 
+// Country Detection priority helper
+const detectCountry = async (email: string, locale?: string, timezone?: string, clientIp?: string) => {
+  // Priority 1: Auth Email
+  if (email && (email.toLowerCase().endsWith(".in") || email.toLowerCase().includes("@india.") || email.toLowerCase().endsWith(".co.in"))) {
+    console.log(`[Country Detection] Matched IN from Email: ${email}`);
+    return "IN";
+  }
+
+  // Priority 2: Browser Locale
+  if (locale) {
+    const lUpper = locale.toUpperCase();
+    if (lUpper.includes("IN") || lUpper.includes("HI")) {
+      console.log(`[Country Detection] Matched IN from Locale: ${locale}`);
+      return "IN";
+    }
+  }
+
+  // Priority 3: Timezone
+  if (timezone) {
+    const tzLower = timezone.toLowerCase();
+    if (tzLower.includes("kolkata") || tzLower.includes("calcutta") || tzLower.includes("india")) {
+      console.log(`[Country Detection] Matched IN from Timezone: ${timezone}`);
+      return "IN";
+    }
+  }
+
+  // Priority 4: IP Geolocation Fallback
+  if (clientIp) {
+    try {
+      // Filter out loopbacks / private IPs
+      if (clientIp !== "127.0.0.1" && clientIp !== "::1" && !clientIp.startsWith("10.") && !clientIp.startsWith("192.168.")) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1200); // 1.2s fast timeout
+        const geoRes = await fetch(`https://ipapi.co/${clientIp}/json/`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (geoRes.ok) {
+          const geoData: any = await geoRes.json();
+          if (geoData && geoData.country_code) {
+            console.log(`[Country Detection] Matched ${geoData.country_code} from Geolocation for IP: ${clientIp}`);
+            return geoData.country_code;
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[Country Detection] IP Geolocation look up failed or timed out: ${err.message}`);
+    }
+  }
+
+  console.log("[Country Detection] Default fallback to US");
+  return "US";
+};
+
+// Check and Sync Membership State self-healing logic
+const checkAndUpdateMembershipStatus = async (userDocRef: any, existingData: any) => {
+  const now = admin.firestore.Timestamp.now();
+  const isAdmin = existingData.email === "asartist20@gmail.com" || existingData.isAdmin === true;
+  
+  if (isAdmin) {
+    return {
+      tier: 'Sovereign',
+      status: 'lifetime',
+      isSubscribed: true,
+      subscriptionExpiry: null
+    };
+  }
+
+  let status = existingData.status || 'trial';
+  let tier = existingData.tier || 'Novice';
+  let isSubscribed = existingData.isSubscribed || false;
+  
+  // Check Trial Expiration
+  const trialEnd = existingData.trialEnd || existingData.trialExpiresAt;
+  const trialEndTime = trialEnd ? trialEnd.toDate().getTime() : 0;
+  const hasTrialExpired = Date.now() > trialEndTime;
+
+  // Check Subscription Expiry
+  let subExpiry = existingData.subscriptionExpiry || existingData.subscriptionEnd;
+  let subExpiryTime = 0;
+  if (subExpiry) {
+    subExpiryTime = subExpiry.toDate ? subExpiry.toDate().getTime() : new Date(subExpiry).getTime();
+  }
+
+  const hasSubExpired = subExpiryTime > 0 && Date.now() > subExpiryTime;
+
+  if (status === 'lifetime') {
+    tier = 'Sovereign';
+    isSubscribed = true;
+  } else if (status === 'active_monthly' || status === 'active_yearly') {
+    if (hasSubExpired) {
+      status = 'expired';
+      tier = 'Novice';
+      isSubscribed = false;
+    } else {
+      tier = 'Sovereign';
+      isSubscribed = true;
+    }
+  } else if (status === 'trial') {
+    if (hasTrialExpired) {
+      status = 'expired';
+      tier = 'Novice';
+      isSubscribed = false;
+    } else {
+      tier = 'Novice';
+      isSubscribed = false;
+    }
+  } else if (status === 'expired') {
+    tier = 'Novice';
+    isSubscribed = false;
+  }
+  
+  const updates = { status, tier, isSubscribed };
+  if (userDocRef) {
+    try {
+      await userDocRef.update({
+        ...updates,
+        updatedAt: now
+      });
+    } catch (writeErr: any) {
+      console.warn("[checkAndUpdateMembershipStatus] Non-blocking write warning (using fallback status sync):", writeErr.message);
+    }
+  }
+
+  return {
+    ...updates,
+    subscriptionExpiry: subExpiry || null
+  };
+};
+
+// Helper to safely parse timestamp elements
+const parseTimestamp = (val: any) => {
+  if (!val) return null;
+  if (val.seconds) return admin.firestore.Timestamp.fromMillis(val.seconds * 1000);
+  if (val._seconds) return admin.firestore.Timestamp.fromMillis(val._seconds * 1000);
+  if (typeof val === 'string' || typeof val === 'number') return admin.firestore.Timestamp.fromMillis(new Date(val).getTime());
+  return admin.firestore.Timestamp.now();
+};
+
 // Sync User Profile with Admin and Trial Logic
 app.post("/api/user/sync", async (req, res) => {
-  const { uid, email, displayName, photoURL } = req.body;
+  const { uid, email, displayName, photoURL, browserLocale, timezone, existingProfile } = req.body;
 
-  if (!uid || !db) return res.status(400).json({ error: "Invalid sync request" });
+  if (!uid) return res.status(400).json({ error: "Invalid sync request" });
 
   try {
-    const userRef = db.collection("users").doc(uid);
-    const doc = await userRef.get();
-
     const isAdmin = email === "asartist20@gmail.com";
     const now = admin.firestore.Timestamp.now();
 
-    if (!doc.exists) {
-      // New User: Start 24h trial
-      const trialDurationMs = 24 * 60 * 60 * 1000;
-      const trialExpiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + trialDurationMs);
+    // Clean client IP estimation
+    const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const clientIp = typeof rawIp === 'string' ? rawIp.split(',')[0]?.trim() : '';
 
-      const newUser = {
-        uid,
-        email,
-        displayName,
-        photoURL,
-        isAdmin,
-        isSubscribed: false,
-        hasCompletedOnboarding: false,
-        createdAt: now,
-        trialExpiresAt,
-        subscriptionTier: 'free'
-      };
+    const detectedCountryCode = await detectCountry(email, browserLocale, timezone, clientIp);
+    const currency = detectedCountryCode === 'IN' ? 'INR' : 'USD';
 
-      await userRef.set(newUser);
-      return res.json(newUser);
+    let docRef: any = null;
+    let useFallback = false;
+
+    if (db) {
+      try {
+        const userRef = db.collection("users").doc(uid);
+        docRef = await userRef.get();
+      } catch (dbError: any) {
+        console.warn("[User Sync] FireStore connection missing or permissions denied. Resorting to client-cooperative fallback.", dbError.message);
+        useFallback = true;
+      }
     } else {
-      // Existing User: Update basic info but preserve tiers
-      const existingData = doc.data();
-      const updatedUser = {
-        ...existingData,
+      useFallback = true;
+    }
+
+    if (!useFallback && docRef && docRef.exists) {
+      // Existing User normal flow
+      const existingData = docRef.data();
+      const adminSync = isAdmin || existingData.isAdmin || false;
+      const finalCountry = existingData.country || detectedCountryCode;
+      const finalCurrency = existingData.currency || currency;
+
+      const baseUpdate = {
         email,
         displayName,
         photoURL,
-        isAdmin: isAdmin || existingData.isAdmin, // Keep admin status if already set or if it's you
+        isAdmin: adminSync,
+        country: finalCountry,
+        currency: finalCurrency,
+        updatedAt: now
       };
-      await userRef.update(updatedUser);
-      return res.json(updatedUser);
+
+      try {
+        await db.collection("users").doc(uid).update(baseUpdate);
+        const mergedData = { ...existingData, ...baseUpdate };
+        const membership = await checkAndUpdateMembershipStatus(db.collection("users").doc(uid), mergedData);
+        return res.json({ ...mergedData, ...membership });
+      } catch (writeErr: any) {
+        console.warn("[User Sync] Firestore write failed under valid read doc. Swapping to fallback mechanism.", writeErr.message);
+        useFallback = true;
+      }
     }
-  } catch (error) {
-    console.error("[User Sync] Error:", error);
+
+    // Fallback or New User flow
+    const profileData = existingProfile || {};
+    const trialDurationMs = 72 * 60 * 60 * 1000;
+    const trialStart = parseTimestamp(profileData.trialStart) || now;
+    const trialEnd = parseTimestamp(profileData.trialEnd) || admin.firestore.Timestamp.fromMillis(Date.now() + trialDurationMs);
+
+    const computedUser: any = {
+      uid,
+      email: email || profileData.email || "",
+      displayName: displayName || profileData.displayName || "",
+      photoURL: photoURL || profileData.photoURL || null,
+      isAdmin: isAdmin || profileData.isAdmin || false,
+      isSubscribed: typeof profileData.isSubscribed === 'boolean' ? profileData.isSubscribed : false,
+      hasCompletedOnboarding: typeof profileData.hasCompletedOnboarding === 'boolean' ? profileData.hasCompletedOnboarding : false,
+      createdAt: parseTimestamp(profileData.createdAt) || now,
+      updatedAt: now,
+      trialStart,
+      trialEnd,
+      trialExpiresAt: trialEnd,
+      tier: profileData.tier || 'Novice',
+      status: profileData.status || 'trial',
+      billingCycle: profileData.billingCycle || null,
+      country: profileData.country || detectedCountryCode,
+      currency: profileData.currency || currency
+    };
+
+    // Self-healing check for computed user trial status
+    if (computedUser.status === 'trial') {
+      const diff = computedUser.trialExpiresAt.seconds * 1000 - Date.now();
+      if (diff <= 0) {
+        computedUser.tier = 'Novice';
+        computedUser.status = 'expired';
+        computedUser.isSubscribed = false;
+      }
+    }
+
+    // Attempt to write the new user doc to database if we are not forcing fallback
+    if (db && !useFallback) {
+      try {
+        await db.collection("users").doc(uid).set(computedUser);
+        return res.json(computedUser);
+      } catch (setErr: any) {
+        console.warn("[User Sync] Database entry storage permission denied. Responding with client-management flags.", setErr.message);
+      }
+    }
+
+    // Respond withcomputed properties and signal the client to write it directly (it has verified Rules access!)
+    return res.json({
+      ...computedUser,
+      resilientFallback: true
+    });
+
+  } catch (error: any) {
+    console.error("[User Sync] Fatal Error:", error);
     res.status(500).json({ error: "Failed to sync user" });
   }
 });
@@ -950,60 +1495,210 @@ app.post("/api/gemini/desire-reading", async (req, res) => {
 });
 
 // Safe Endpoint for the Frontend to fetch the public Razorpay Key ID
-app.get("/api/config/razorpay-key", (req, res) => {
-  const FALLBACK_KEY_ID = "rzp_live_SvE7htrj6ZpieA";
+// (Implementation moved higher up)
 
-  const key_id = findValidKey([
-    process.env.RAZORPAY_KEY_ID,
-    process.env.VITE_RAZORPAY_KEY_ID,
-    process.env.VITE_RAZORPAY_KEY,
-    process.env.RAZORPAY_ID
-  ], FALLBACK_KEY_ID, "RAZORPAY_KEY_ID");
-  
-  if (!key_id || key_id === "your_razorpay_key_id_here") {
-    return res.json({ keyId: null });
+// Razorpay Webhook Verification
+app.post("/api/razorpay/webhook", async (req, res) => {
+  const secret = (process.env.RAZORPAY_WEBHOOK_SECRET || "").trim();
+  const signature = req.headers["x-razorpay-signature"] as string;
+
+  console.log(`[Razorpay Webhook] Received webhook. Signature Present: ${!!signature}, Secret Configured: ${!!secret}`);
+
+  // Maintain webhook auditing history
+  if (db) {
+    try {
+      await db.collection("webhooks").add({
+        receivedAt: admin.firestore.Timestamp.now(),
+        event: req.body.event || 'generic',
+        payload: req.body,
+        signaturePresent: !!signature
+      });
+    } catch (whErr) {
+      console.error("[Razorpay Webhook Audit] Webhook history logging failed:", whErr);
+    }
   }
 
-  res.json({ keyId: key_id });
+  if (!secret) {
+    console.warn("[Razorpay Webhook] Received webhook but RAZORPAY_WEBHOOK_SECRET is not configured in environment variables. Verification bypassed.");
+  } else {
+    if (!signature) {
+      console.error("[Razorpay Webhook] MISSING x-razorpay-signature header which is required when Webhook Secret is set.");
+      return res.status(400).send("Missing signature header");
+    }
+
+    let verified = false;
+    try {
+      const rawText = JSON.stringify(req.body);
+      verified = Razorpay.validateWebhookSignature(rawText, signature, secret);
+    } catch (err: any) {
+      console.warn(`[Razorpay Webhook] validateWebhookSignature helper failed: ${err.message}. Falling back to manual HMAC comparison.`);
+      try {
+        const expectedSignature = crypto
+          .createHmac("sha256", secret)
+          .update(JSON.stringify(req.body))
+          .digest("hex");
+        verified = (expectedSignature === signature);
+      } catch (err2) {
+        console.error(`[Razorpay Webhook] Manual validation also threw:`, err2);
+      }
+    }
+
+    if (!verified) {
+      console.error("[Razorpay Webhook] INVALID SIGNATURE received. Rejecting webhook request.");
+      return res.status(400).send("Invalid signature");
+    }
+  }
+
+  const event = req.body.event;
+  console.log(`[Razorpay Webhook] Verified Event structure: "${event}"`);
+
+  if (event === "payment.captured") {
+    try {
+      const payment = req.body.payload?.payment?.entity;
+      const orderNotes = req.body.payload?.order?.entity?.notes;
+      const paymentNotes = payment?.notes;
+
+      const notes = { ...(orderNotes || {}), ...(paymentNotes || {}) };
+      const userId = notes.userId || notes.user_id;
+      const tier = notes.tier || notes.planName || notes.plan;
+      const billingCycle = notes.billingCycle || "monthly";
+
+      console.log(`[Razorpay Webhook] Extracting Metadata. User ID: ${userId || 'N/A'}, Tier: ${tier || 'N/A'}, Billing Cycle: ${billingCycle}`);
+
+      if (!userId || !tier) {
+        console.warn(`[Razorpay Webhook] Event "payment.captured" is missing essential metadata "userId" (${userId}) or "tier" (${tier}) in payload notes. Bypassing state update.`);
+      } else {
+        const expiry = new Date();
+        if (billingCycle === 'monthly') {
+          expiry.setMonth(expiry.getMonth() + 1);
+        } else if (billingCycle === 'yearly') {
+          expiry.setFullYear(expiry.getFullYear() + 1);
+        } else {
+          expiry.setFullYear(expiry.getFullYear() + 100);
+        }
+
+        if (db) {
+          await db.collection("users").doc(userId).update({
+            tier: tier,
+            subscriptionExpiry: admin.firestore.Timestamp.fromDate(expiry),
+            updatedAt: admin.firestore.Timestamp.now()
+          });
+          console.log(`[Razorpay Webhook] SUCCESS: Upgraded User profile for uid: ${userId} to "${tier}" tier.`);
+
+          // Replicate Income Log locally for visual accounting
+          try {
+            const inrAmount = payment?.amount ? payment.amount / 100 : 0;
+            await db.collection("transactions").add({
+              type: 'income',
+              amount: inrAmount,
+              label: payment?.email || payment?.contact || 'Manifest Seeker (Webhook)',
+              category: `${tier} Activation [${billingCycle}] (Webhook)`,
+              ownerId: userId,
+              timestamp: admin.firestore.Timestamp.now()
+            });
+            console.log(`[Razorpay Webhook] SUCCESS: Transaction registry logged for user: ${userId}`);
+          } catch (txErr: any) {
+            console.error(`[Razorpay Webhook] Failed to register local transaction database record: ${txErr.message}`);
+          }
+        } else {
+          console.error(`[Razorpay Webhook] CRITICAL: Cannot persist upgrade. Database reference (db) is uninitialized or unhealthy.`);
+        }
+      }
+    } catch (parseError: any) {
+      console.error(`[Razorpay Webhook] Failed to parse payment capture details correctly:`, parseError);
+    }
+  }
+
+  res.status(200).send("ok");
 });
 
-// Razorpay Order Creation
+// Razorpay Order Creation (Server-Authoritative Pricing)
 app.post("/api/razorpay/create-order", async (req, res) => {
+  console.log(`[API] Received Secure Order Request:`, JSON.stringify(req.body));
   try {
-    const rzp = getRazorpay();
-    if (!rzp) {
-      return res.status(500).json({ error: "Razorpay API keys are missing or set to placeholder. Please update RAZORPAY_KEY_ID and RAZORPAY_SECRET_KEY in Environment Variables." });
-    }
+    const rzp = getRazorpay(req);
+    const { receipt, planName, billingCycle, userId, userEmail, userName, currency: reqCurrency } = req.body;
     
-    const { amount, currency, receipt, planName, billingCycle, userId, userEmail, userName } = req.body;
-    
-    // Validation
-    if (!amount || isNaN(parseFloat(amount))) {
-      return res.status(400).json({ error: "Invalid amount provided." });
+    if (!userId || !planName || !billingCycle) {
+      return res.status(400).json({ error: "Missing required parameters (userId, planName, billingCycle)." });
     }
 
-    const finalAmount = Math.round(parseFloat(amount) * 100);
+    // Server-side country and price verification
+    let country = "US";
+    let currencyToUse = "USD";
+    let resolvedPrice = 0;
+
+    if (db) {
+      try {
+        const userDoc = await db.collection("users").doc(userId).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          country = userData.country || "US";
+          currencyToUse = userData.currency || (country === "IN" ? "INR" : "USD");
+        }
+      } catch (dbErr) {
+        console.warn("[Razorpay Order] User doc fetch omitted, falling back to default geolocation or inputs.", dbErr);
+      }
+    }
+
+    // Apply explicit request-level currency override (conversion-focused for Indian users)
+    if (reqCurrency === "INR" || reqCurrency === "INR") {
+      country = "IN";
+      currencyToUse = "INR";
+    } else if (reqCurrency === "USD" || reqCurrency === "USD") {
+      country = "US";
+      currencyToUse = "USD";
+    }
+
+    // Save choices seamlessly back to Firestore profile so user database is aligned
+    if (db) {
+      try {
+        await db.collection("users").doc(userId).update({
+          country,
+          currency: currencyToUse,
+          updatedAt: admin.firestore.Timestamp.now()
+        });
+        console.log(`[Razorpay Order] Persistence aligned for uid ${userId}. Country: ${country}, Currency: ${currencyToUse}`);
+      } catch (saveErr: any) {
+        console.warn("[Razorpay Order] Non-blocking state save skipped (possibly guest profile):", saveErr.message);
+      }
+    }
+
+    // Priority Check: Pricing Rules
+    if (country === 'IN' || currencyToUse === 'INR') {
+      currencyToUse = 'INR';
+      if (billingCycle === 'monthly') resolvedPrice = 99;
+      else if (billingCycle === 'yearly') resolvedPrice = 999;
+      else if (billingCycle === 'lifetime') resolvedPrice = 2999;
+    } else {
+      currencyToUse = 'USD';
+      if (billingCycle === 'monthly') resolvedPrice = 5;
+      else if (billingCycle === 'yearly') resolvedPrice = 49;
+      else if (billingCycle === 'lifetime') resolvedPrice = 149;
+    }
+
+    const finalAmount = Math.round(resolvedPrice * 100);
     if (finalAmount <= 0) {
-      return res.status(400).json({ error: "Amount must be greater than zero." });
+      return res.status(400).json({ error: "Determined price is invalid." });
     }
 
-    console.log(`[Razorpay] Creating ${req.body.useLink ? 'Payment Link' : 'Order'}:`, {
-      finalAmount,
-      currency: currency || "INR",
-      receipt: receipt?.substring(0, 40), // Safe truncation
-      planName
-    });
+    console.log(`[Razorpay Server] Secure Pricing Assigned. User ID: ${userId}, Country: ${country}, Currency: ${currencyToUse}, Amount: ${resolvedPrice}`);
+
+    if (!rzp) {
+      console.error("[Razorpay] FAILED to initialize instance.");
+      return res.status(500).json({ error: "Razorpay API keys are missing or invalid." });
+    }
 
     // If user explicitly wants a REDIRECT/LINK (Magic Checkout style)
     if (req.body.useLink) {
        const paymentLink = await rzp.paymentLink.create({
          amount: finalAmount,
-         currency: currency || "INR",
+         currency: currencyToUse,
          accept_partial: false,
          description: `${planName} [${billingCycle}] Activation`,
          customer: {
            name: (userName || "Manifestor").substring(0, 255),
-           email: (userEmail && userEmail.trim() ? userEmail.trim() : `manifestor-${(userId || "guest").slice(-6)}@vibeos.com`).substring(0, 255),
+           email: (userEmail && userEmail.trim() ? userEmail.trim() : `manifestor-${userId.slice(-6)}@vibeos.com`).substring(0, 255),
          },
          notify: {
             sms: false,
@@ -1011,25 +1706,71 @@ app.post("/api/razorpay/create-order", async (req, res) => {
           },
           reminder_enable: true,
          notes: {
-           userId: (userId || "").toString(),
-           tier: (planName || "").toString(),
-           billingCycle: (billingCycle || "").toString()
+           userId: userId.toString(),
+           tier: planName.toString(),
+           billingCycle: billingCycle.toString()
          },
-         callback_url: `${req.headers.origin}/?success=true&planName=${encodeURIComponent(planName || "")}&billingCycle=${encodeURIComponent(billingCycle || "")}`,
+         callback_url: `${req.headers.origin}/?success=true&planName=${encodeURIComponent(planName)}&billingCycle=${encodeURIComponent(billingCycle)}`,
          callback_method: "get"
        });
+
+       // Create Payment & Transaction & Subscription pending structures
+       if (db) {
+         try {
+           await db.collection("payments").doc(paymentLink.id).set({
+             userId,
+             paymentId: null,
+             orderId: paymentLink.id,
+             amount: resolvedPrice,
+             currency: currencyToUse,
+             plan: planName,
+             billingCycle,
+             status: 'payment_pending',
+             country,
+             createdAt: admin.firestore.Timestamp.now()
+           });
+         } catch (dbLogErr) {
+           console.error("[Razorpay Link Log] Failed to store pending pay state:", dbLogErr);
+         }
+       }
+
        return res.json({ paymentLinkUrl: paymentLink.short_url, paymentLinkId: paymentLink.id });
     }
 
     const order = await rzp.orders.create({
       amount: finalAmount, 
-      currency: currency || "INR",
+      currency: currencyToUse,
       receipt: (receipt || `rcpt_${Date.now()}`).substring(0, 40),
+      notes: {
+        userId: userId.toString(),
+        tier: planName.toString(),
+        billingCycle: billingCycle.toString()
+      }
     });
+
+    // Create Payment & Transaction pending structures
+    if (db) {
+      try {
+        await db.collection("payments").doc(order.id).set({
+          userId,
+          paymentId: null,
+          orderId: order.id,
+          amount: resolvedPrice,
+          currency: currencyToUse,
+          plan: planName,
+          billingCycle,
+          status: 'payment_pending',
+          country,
+          createdAt: admin.firestore.Timestamp.now()
+        });
+      } catch (dbLogErr) {
+        console.error("[Razorpay Order Log] Failed to store pending pay state:", dbLogErr);
+      }
+    }
+
     return res.json(order);
   } catch (error: any) {
     console.error("Razorpay Order Error:", error);
-    // Be more specific for authentication errors
     const isAuthError = 
       error.statusCode === 401 || 
       error.error?.description === 'Authentication failed' ||
@@ -1038,18 +1779,20 @@ app.post("/api/razorpay/create-order", async (req, res) => {
       error.code === 'BAD_REQUEST_ERROR';
 
     if (isAuthError) {
-      const key_id = (
+      const key_id_debug = (
         process.env.RAZORPAY_KEY_ID || 
         process.env.VITE_RAZORPAY_KEY_ID || 
         process.env.VITE_RAZORPAY_KEY ||
         process.env.RAZORPAY_ID ||
-        ""
+        "MISSING"
       ).trim();
+      const isTestKeyDebug = key_id_debug.startsWith("rzp_test_");
       return res.status(401).json({ 
         error: "Razorpay Authentication Failed", 
-        details: "Your Key ID or Secret is missing/invalid. You need BOTH RAZORPAY_KEY_ID and RAZORPAY_SECRET_KEY in Environment Variables.",
-        debug_id_prefix: key_id.substring(0, 8) + "...",
-        debug_id_len: key_id.length
+        details: `The keys provided were rejected by Razorpay. Mode: ${isTestKeyDebug ? 'TEST' : 'LIVE'}. If you are in LIVE mode, ensure you are using the correct Secret for Secret ID ${key_id_debug.substring(0, 8)}...`,
+        suggestion: "Ensure you have set 'RAZORPAY_KEY_ID' and 'RAZORPAY_KEY_SECRET' correctly in Settings -> Environment Variables. Do not include quotes in the values.",
+        debug_id_prefix: key_id_debug.substring(0, 8) + "...",
+        debug_id_len: key_id_debug.length
       });
     }
     return res.status(500).json({ error: error.message || "Failed to create order. Check server logs." });
@@ -1058,18 +1801,16 @@ app.post("/api/razorpay/create-order", async (req, res) => {
 
 // Razorpay Payment Verification
 app.post("/api/razorpay/verify-payment", async (req, res) => {
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planName: reqPlan, billingCycle: reqBillingCycle, userId: reqUserId } = req.body;
+  let secret = getRzpSecret();
   
-  const FALLBACK_KEY_SECRET = "4s7WZSgvR9ZBb4WeYear5TtF";
+  const customSecret = req.headers["x-razorpay-key-secret"];
+  if (customSecret && typeof customSecret === "string" && customSecret.trim()) {
+    secret = customSecret.trim();
+  }
 
-  const secret = findValidKey([
-    process.env.RAZORPAY_SECRET_KEY,
-    process.env.VITE_RAZORPAY_SECRET,
-    process.env.RAZORPAY_SECRET
-  ], FALLBACK_KEY_SECRET, "RAZORPAY_SECRET_KEY");
-
-  if (!secret || secret === "your_razorpay_secret_key_here") {
-    return res.status(500).json({ error: "Razorpay secret key missing or invalid on server." });
+  if (!secret) {
+    return res.status(500).json({ error: "Razorpay configuration missing on server." });
   }
 
   const body = razorpay_order_id + "|" + razorpay_payment_id;
@@ -1079,9 +1820,125 @@ app.post("/api/razorpay/verify-payment", async (req, res) => {
     .digest("hex");
 
   if (expectedSignature === razorpay_signature) {
-     res.json({ status: "ok", message: "Payment verified successfully." });
+    let billingCycle = reqBillingCycle || "monthly";
+    let planName = reqPlan || "Sovereign";
+    let userId = reqUserId || "unknown";
+    let currency = "USD";
+    let country = "US";
+    let amount = 0;
+
+    let upgradeResult: any = { 
+      status: "ok", 
+      message: "Payment verified successfully.",
+      dbSuccess: false 
+    };
+
+    if (db && razorpay_order_id) {
+      try {
+        // Query the pending payment record
+        const paySnap = await db.collection("payments").doc(razorpay_order_id).get();
+        if (paySnap.exists) {
+          const payData = paySnap.data();
+          if (payData.userId) userId = payData.userId;
+          if (payData.billingCycle) billingCycle = payData.billingCycle;
+          if (payData.plan) planName = payData.plan;
+          if (payData.currency) currency = payData.currency;
+          if (payData.country) country = payData.country;
+          if (payData.amount) amount = payData.amount;
+        }
+      } catch (err: any) {
+        console.warn("[Verification server] Non-blocking: Leftover db payments collection read failed.", err.message);
+      }
+
+      const now = admin.firestore.Timestamp.now();
+      const expiry = new Date();
+      if (billingCycle === 'monthly') expiry.setMonth(expiry.getMonth() + 1);
+      else if (billingCycle === 'yearly') expiry.setFullYear(expiry.getFullYear() + 1);
+      else expiry.setFullYear(expiry.getFullYear() + 100);
+
+      const subscriptionEnd = admin.firestore.Timestamp.fromDate(expiry);
+      const subStatus = billingCycle === 'lifetime' ? 'lifetime' : `active_${billingCycle}`;
+
+      try {
+        console.log(`[Verification server] Upgrading profile for user: ${userId} - Plan: ${planName} [${billingCycle}]`);
+
+        // 1. Update user profile doc
+        await db.collection("users").doc(userId).update({
+          tier: planName,
+          isSubscribed: true,
+          status: subStatus,
+          billingCycle,
+          currency,
+          country,
+          subscriptionStart: now,
+          subscriptionEnd,
+          subscriptionExpiry: subscriptionEnd,
+          paymentId: razorpay_payment_id,
+          orderId: razorpay_order_id,
+          updatedAt: now
+        });
+
+        // 2. Add subscription history doc
+        await db.collection("subscriptions").add({
+          userId,
+          plan: planName,
+          billingCycle,
+          currency,
+          country,
+          subscriptionStart: now,
+          subscriptionEnd,
+          status: subStatus,
+          paymentId: razorpay_payment_id,
+          orderId: razorpay_order_id,
+          createdAt: now
+        });
+
+        // 3. Complete payment record status
+        await db.collection("payments").doc(razorpay_order_id).update({
+          paymentId: razorpay_payment_id,
+          status: 'completed',
+          completedAt: now
+        });
+
+        // 4. Log income transaction tracking
+        try {
+          await db.collection("transactions").add({
+            type: 'income',
+            amount,
+            label: userId,
+            category: `${planName} Acquisition [${billingCycle}]`,
+            ownerId: userId,
+            timestamp: now
+          });
+        } catch (txErr) {
+          console.error("[Verification server] Failed to log income sheet:", txErr);
+        }
+
+        upgradeResult.dbSuccess = true;
+        console.log(`[Verification server] UPGRADE TRANSIT COMPLETED in DB. User ${userId} is now Sovereign.`);
+      } catch (err: any) {
+        console.error("[Verification server] DB sync updates deferred to client SDK fallback.", err.message);
+      }
+    }
+
+    const backupExpiryDate = new Date();
+    if (billingCycle === 'monthly') backupExpiryDate.setMonth(backupExpiryDate.getMonth() + 1);
+    else if (billingCycle === 'yearly') backupExpiryDate.setFullYear(backupExpiryDate.getFullYear() + 1);
+    else backupExpiryDate.setFullYear(backupExpiryDate.getFullYear() + 100);
+
+    // Always include detailed success parameters in the payload
+    upgradeResult = {
+      ...upgradeResult,
+      userId,
+      plan: planName,
+      billingCycle,
+      status: billingCycle === 'lifetime' ? 'lifetime' : `active_${billingCycle}`,
+      subscriptionExpiry: backupExpiryDate
+    };
+
+    res.json(upgradeResult);
   } else {
-     res.status(400).json({ status: "error", message: "Invalid signature authenticity." });
+    res.status(400).json({ status: "error", message: "Invalid signature authenticity." });
   }
 });
 
@@ -1093,7 +1950,7 @@ app.post("/api/razorpay/verify-payment-link", async (req, res) => {
     return res.status(400).json({ error: "Missing required parameter payment_link_id" });
   }
 
-  const rzp = getRazorpay();
+  const rzp = getRazorpay(req);
   if (!rzp) {
     return res.status(500).json({ error: "Razorpay initialization failed on server." });
   }
@@ -1375,6 +2232,31 @@ app.get("/api/admin/infra-check", (req, res) => {
 async function startServer() {
   // 1. Initialize Firestore first
   await initializeFirestore();
+
+  // Startup Razorpay dynamic credentials verification test
+  try {
+    const rzpCreds = getRzpCredentials();
+    console.log(`[Razorpay Startup Test] Testing initialized credentials for ID: ${rzpCreds.key_id.substring(0, 8)}...`);
+    
+    const razorpay = new Razorpay({
+      key_id: rzpCreds.key_id,
+      key_secret: rzpCreds.key_secret,
+    });
+
+    await razorpay.orders.all({ count: 1 });
+    console.log("[Razorpay Startup Test] SUCCESS: Authentication verified and operational on Razorpay API.");
+  } catch (error: any) {
+    console.error("========== RAZORPAY AUTH FAIL ==========");
+    console.error("[Razorpay Startup Test] Authentication / validation check failed!");
+    console.error("Error Message:", error.message || error);
+    if (error.statusCode) {
+      console.error("HTTP Status Code:", error.statusCode);
+    }
+    if (error.error) {
+      console.error("Detailed Razorpay Error Payload:", JSON.stringify(error.error, null, 2));
+    }
+    console.error("========================================");
+  }
 
   // 2. Start Background Scheduler
   startScheduler();

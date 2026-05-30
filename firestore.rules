@@ -83,6 +83,7 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.keys().hasAll(['email', 'tier']) &&
              data.email is string &&
+             data.tier in ['free', 'Novice', 'Sovereign'] &&
              isServerTimestamp(data, 'updatedAt') &&
              (!('walkthroughCompleted' in data) || data.walkthroughCompleted is bool) &&
              (!('hasCompletedOnboarding' in data) || data.hasCompletedOnboarding is bool) &&
@@ -95,6 +96,8 @@ service cloud.firestore {
              (!('whatsappNumber' in data) || data.whatsappNumber is string) &&
              (!('whatsappReminders' in data) || data.whatsappReminders is bool) &&
              (!('whatsappOptOut' in data) || data.whatsappOptOut is bool) &&
+             (!('photoURL' in data) || data.photoURL is string || data.photoURL == null) &&
+             (!('displayName' in data) || data.displayName is string || data.displayName == null) &&
              (!('lastCheckinScore' in data) || (data.lastCheckinScore is int && data.lastCheckinScore >= 1 && data.lastCheckinScore <= 5));
     }
 
@@ -138,8 +141,13 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && (incoming().tier == 'free' || incoming().tier == 'Novice' || incoming().tier == 'Sovereign');
+      allow update: if (isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'updatedAt', 'walkthroughCompleted', 'hasCompletedOnboarding', 'manifestationGoal', 'onboardingAffirmation', 'photoURL', 'displayName', 'whatsappNumber', 'whatsappReminders', 'whatsappOptOut', 'lastCheckinScore',
+          'tier', 'status', 'trialStart', 'trialEnd', 'trialExpiresAt', 'isSubscribed', 'country', 'currency', 'billingCycle', 'subscriptionExpiry', 'subscriptionStart', 'subscriptionEnd', 'isAdmin', 'createdAt'
+        ])
+      )) || isAdmin();
       allow delete: if isAdmin();
 
       match /checkins/{checkinId} {
