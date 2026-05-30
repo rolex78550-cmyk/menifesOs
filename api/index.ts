@@ -208,33 +208,33 @@ app.use("/api/gemini/", apiLimiter);
 
 const getRzpCredentials = () => {
   const idCandidates = [
-    process.env.RAZORPAY_KEY_ID,
-    process.env.VITE_RAZORPAY_KEY_ID,
-    process.env.RAZORPAY_ID,
-    process.env.RAZORPAY_KEY
+    { name: "RAZORPAY_KEY_ID", val: process.env.RAZORPAY_KEY_ID },
+    { name: "VITE_RAZORPAY_KEY_ID", val: process.env.VITE_RAZORPAY_KEY_ID },
+    { name: "RAZORPAY_ID", val: process.env.RAZORPAY_ID },
+    { name: "RAZORPAY_KEY", val: process.env.RAZORPAY_KEY }
   ];
   
   const secretCandidates = [
-    process.env.RAZORPAY_KEY_SECRET,
-    process.env.RAZORPAY_SECRET_KEY,
-    process.env.RAZORPAY_SECRET,
-    process.env.VITE_RAZORPAY_KEY_SECRET
+    { name: "RAZORPAY_KEY_SECRET", val: process.env.RAZORPAY_KEY_SECRET },
+    { name: "RAZORPAY_SECRET_KEY", val: process.env.RAZORPAY_SECRET_KEY },
+    { name: "RAZORPAY_SECRET", val: process.env.RAZORPAY_SECRET },
+    { name: "VITE_RAZORPAY_KEY_SECRET", val: process.env.VITE_RAZORPAY_KEY_SECRET }
   ];
 
-  console.log("[Razorpay DEBUG] ID Candidates Raw (Count):", idCandidates.filter(Boolean).length);
-  console.log("[Razorpay DEBUG] Secret Candidates Raw (Count):", secretCandidates.filter(Boolean).length);
+  console.log("[getRzpCredentials DEBUG] Checking ID Candidates...");
+  idCandidates.forEach(c => console.log(`  - ${c.name}: ${c.val ? "EXISTS" : "MISSING"} (Len: ${c.val?.length || 0})`));
   
-  // Log specific env existence without values for security
-  console.log("[Razorpay DEBUG] RAZORPAY_KEY_ID exists:", !!process.env.RAZORPAY_KEY_ID, process.env.RAZORPAY_KEY_ID?.substring(0, 4) + "...");
-  console.log("[Razorpay DEBUG] RAZORPAY_KEY_SECRET exists:", !!process.env.RAZORPAY_KEY_SECRET, process.env.RAZORPAY_KEY_SECRET ? "YES" : "NO");
-
   const findFirstValid = (list: any[], isId: boolean) => {
-    for (const raw of list) {
+    for (const cand of list) {
+      const raw = cand.val;
       const clean = sanitizeConfigStr(raw);
       if (!clean) continue;
       if (clean.includes("PLACEHOLDER") || clean.includes("YOUR_")) continue;
-      // Relaxed prefix check: still prefers rzp_ but allows non-prefixed if it looks long enough to be a valid key
-      if (isId && !clean.startsWith("rzp_") && clean.length < 10) continue;
+      // Relaxed prefix check
+      if (isId && !clean.startsWith("rzp_") && clean.length < 10) {
+         console.log(`[getRzpCredentials] Candidate ${cand.name} failed ID validation.`);
+         continue;
+      }
       if (!isId && clean.length < 5) continue;
       return clean;
     }
@@ -245,7 +245,7 @@ const getRzpCredentials = () => {
   const secret = findFirstValid(secretCandidates, false);
 
   if (!id || !secret) {
-    throw new Error(`Razorpay Credentials Missing or Invalid. Check Environment Variables. Found ID: ${!!id}, Secret: ${!!secret}`);
+    throw new Error(`Razorpay Credentials Missing or Invalid. Found ID: ${!!id}, Secret: ${!!secret}`);
   }
 
   return { 
@@ -441,6 +441,11 @@ app.use((req, res, next) => {
 
 // Razorpay Initialization Helper
 const getRazorpay = (req?: any) => {
+  console.log("[Razorpay DEBUG] getRazorpay called. NODE_ENV:", process.env.NODE_ENV);
+  console.log("[Razorpay DEBUG] RAZORPAY_KEY_ID:", process.env.RAZORPAY_KEY_ID ? process.env.RAZORPAY_KEY_ID.substring(0, 8) + "..." : "MISSING");
+  console.log("[Razorpay DEBUG] SECRET_EXISTS:", !!process.env.RAZORPAY_KEY_SECRET);
+  console.log("[Razorpay DEBUG] SECRET_LENGTH:", process.env.RAZORPAY_KEY_SECRET?.length || 0);
+
   let key_id = "";
   let key_secret = "";
 
@@ -448,6 +453,7 @@ const getRazorpay = (req?: any) => {
     const creds = getRzpCredentials();
     key_id = creds.key_id;
     key_secret = creds.key_secret;
+    console.log("[Razorpay DEBUG] Credentials fetched from getRzpCredentials successfully.");
   } catch (err: any) {
     console.error(`[Razorpay] Env credentials fetch error: ${err.message}`);
   }
@@ -457,9 +463,11 @@ const getRazorpay = (req?: any) => {
     const customSecret = req.headers["x-razorpay-key-secret"];
     if (customId && typeof customId === "string" && customId.trim()) {
       key_id = customId.trim();
+      console.log("[Razorpay DEBUG] Using custom key_id from headers.");
     }
     if (customSecret && typeof customSecret === "string" && customSecret.trim()) {
       key_secret = customSecret.trim();
+      console.log("[Razorpay DEBUG] Using custom key_secret from headers.");
     }
   }
 
@@ -471,19 +479,27 @@ const getRazorpay = (req?: any) => {
   const isCustom = req && req.headers && (req.headers["x-razorpay-key-id"] || req.headers["x-razorpay-key-secret"]);
   console.log(`[Razorpay] Instance initialization. Source: ${isCustom ? 'Client headers' : 'Env Vars'}. ID: ${key_id.substring(0, 8)}... Secret Len: ${key_secret.length}. Mode: ${key_id.startsWith('rzp_test_') ? 'TEST' : 'LIVE'}`);
 
+  let instance = null;
   try {
-    return new Razorpay({
+    instance = new Razorpay({
       key_id: key_id,
       key_secret: key_secret
     });
   } catch (err) {
     console.error("[Razorpay] Constructor error:", err);
     const RazorpayConstructor = (Razorpay as any).default || Razorpay;
-    return new RazorpayConstructor({
-      key_id: key_id,
-      key_secret: key_secret
-    });
+    try {
+      instance = new RazorpayConstructor({
+        key_id: key_id,
+        key_secret: key_secret
+      });
+    } catch (innerErr) {
+      console.error("[Razorpay] Final constructor failure:", innerErr);
+    }
   }
+
+  console.log("[Razorpay DEBUG] RAZORPAY_INSTANCE_CREATED =", !!instance);
+  return instance;
 };
 
 // Razorpay Key Endpoint
