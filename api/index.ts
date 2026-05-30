@@ -2154,14 +2154,19 @@ async function startServer() {
   startScheduler();
   startStreakDangerScheduler();
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+  // Vite middleware for development (conditionally imported to avoid production runtime deps)
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    try {
+      const viteModule = "vite";
+      const { createServer: createViteServer } = await import(viteModule);
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (err) {
+      console.warn("[Development] Vite could not be loaded, skipping middleware.");
+    }
   } else {
     // Production: Serve static files from dist
     const distPath = path.join(process.cwd(), "dist");
