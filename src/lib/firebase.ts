@@ -9,21 +9,23 @@ import {
   updateProfile,
   signOut
 } from 'firebase/auth';
-import { initializeFirestore, doc, getDocFromServer, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
+import { initializeFirestore, doc, getDocFromServer, CACHE_SIZE_UNLIMITED, memoryLocalCache } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 
-// Use experimental forceLongPolling to bypass potential WebSocket/ISP/iFrame blocking in AI Studio
-// Also sanitize database ID - fallback to default if not defined properly
+// Initialize Firestore with settings optimized for AI Studio and restricted networks
 const dbId = (firebaseConfig.firestoreDatabaseId && !firebaseConfig.firestoreDatabaseId.includes('PLACEHOLDER')) 
   ? firebaseConfig.firestoreDatabaseId 
   : undefined;
 
+// Use initializeFirestore to apply specific settings for connectivity issues
+// memoryLocalCache() avoids potential indexedDB corruption/locking issues in some browser environments
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
-  ignoreUndefinedProperties: true
+  ignoreUndefinedProperties: true,
+  localCache: memoryLocalCache()
 }, dbId);
 
 export const auth = getAuth(app);

@@ -1062,11 +1062,24 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "Server is healthy." });
 });
 
+// Utility: Promise Timeout Wrapper
+const withTimeout = <T>(promise: Promise<T>, ms: number, timeoutLabel = "Operation"): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${timeoutLabel} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+};
+
 // Country Detection priority helper
 const detectCountry = async (email: string, locale?: string, timezone?: string, clientIp?: string) => {
+  const startTime = Date.now();
+  console.log(`[Country Detection] START for ${email || 'Anonymous'}`);
+
   // Priority 1: Auth Email
   if (email && (email.toLowerCase().endsWith(".in") || email.toLowerCase().includes("@india.") || email.toLowerCase().endsWith(".co.in"))) {
-    console.log(`[Country Detection] Matched IN from Email: ${email}`);
+    console.log(`[Country Detection] Matched IN from Email in ${Date.now() - startTime}ms`);
     return "IN";
   }
 
@@ -1074,7 +1087,7 @@ const detectCountry = async (email: string, locale?: string, timezone?: string, 
   if (locale) {
     const lUpper = locale.toUpperCase();
     if (lUpper.includes("IN") || lUpper.includes("HI")) {
-      console.log(`[Country Detection] Matched IN from Locale: ${locale}`);
+      console.log(`[Country Detection] Matched IN from Locale: ${locale} in ${Date.now() - startTime}ms`);
       return "IN";
     }
   }
@@ -1083,7 +1096,7 @@ const detectCountry = async (email: string, locale?: string, timezone?: string, 
   if (timezone) {
     const tzLower = timezone.toLowerCase();
     if (tzLower.includes("kolkata") || tzLower.includes("calcutta") || tzLower.includes("india")) {
-      console.log(`[Country Detection] Matched IN from Timezone: ${timezone}`);
+      console.log(`[Country Detection] Matched IN from Timezone: ${timezone} in ${Date.now() - startTime}ms`);
       return "IN";
     }
   }
@@ -1093,16 +1106,18 @@ const detectCountry = async (email: string, locale?: string, timezone?: string, 
     try {
       // Filter out loopbacks / private IPs
       if (clientIp !== "127.0.0.1" && clientIp !== "::1" && !clientIp.startsWith("10.") && !clientIp.startsWith("192.168.")) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1200); // 1.2s fast timeout
-        const geoRes = await fetch(`https://ipapi.co/${clientIp}/json/`, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (geoRes.ok) {
-          const geoData: any = await geoRes.json();
-          if (geoData && geoData.country_code) {
-            console.log(`[Country Detection] Matched ${geoData.country_code} from Geolocation for IP: ${clientIp}`);
-            return geoData.country_code;
-          }
+        console.log(`[Country Detection] Attempting Geo-IP for ${clientIp}...`);
+        
+        const geoFetch = fetch(`https://ipapi.co/${clientIp}/json/`).then(async res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        });
+
+        const geoData: any = await withTimeout(geoFetch, 1500, "Geo-IP Lookup");
+        
+        if (geoData && geoData.country_code) {
+          console.log(`[Country Detection] Matched ${geoData.country_code} from Geolocation in ${Date.now() - startTime}ms`);
+          return geoData.country_code;
         }
       }
     } catch (err: any) {
@@ -1110,7 +1125,7 @@ const detectCountry = async (email: string, locale?: string, timezone?: string, 
     }
   }
 
-  console.log("[Country Detection] Default fallback to US");
+  console.log(`[Country Detection] Default fallback to US in ${Date.now() - startTime}ms`);
   return "US";
 };
 
@@ -1201,9 +1216,12 @@ const parseTimestamp = (val: any) => {
 
 // Sync User Profile with Admin and Trial Logic
 app.post("/api/user/sync", async (req, res) => {
+  const startTime = Date.now();
   const { uid, email, displayName, photoURL, browserLocale, timezone, existingProfile } = req.body;
 
   if (!uid) return res.status(400).json({ error: "Invalid sync request" });
+
+  console.log(`[User Sync] [START] for UID: ${uid}`);
 
   try {
     const isAdmin = email === "asartist20@gmail.com";
@@ -1213,21 +1231,26 @@ app.post("/api/user/sync", async (req, res) => {
     const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
     const clientIp = typeof rawIp === 'string' ? rawIp.split(',')[0]?.trim() : '';
 
+    console.log(`[User Sync] [STEP 1] Detect Country start...`);
     const detectedCountryCode = await detectCountry(email, browserLocale, timezone, clientIp);
     const currency = detectedCountryCode === 'IN' ? 'INR' : 'USD';
+    console.log(`[User Sync] [STEP 1] Country: ${detectedCountryCode} (Duration: ${Date.now() - startTime}ms)`);
 
     let docRef: any = null;
     let useFallback = false;
 
     if (db) {
       try {
+        console.log(`[User Sync] [STEP 2] Firestore Read start...`);
         const userRef = db.collection("users").doc(uid);
-        docRef = await userRef.get();
+        docRef = await withTimeout(userRef.get(), 3000, "Firestore Read (Sync)");
+        console.log(`[User Sync] [STEP 2] Firestore Read end (Duration: ${Date.now() - startTime}ms)`);
       } catch (dbError: any) {
         console.warn("[User Sync] FireStore connection missing or permissions denied. Resorting to client-cooperative fallback.", dbError.message);
         useFallback = true;
       }
     } else {
+      console.warn("[User Sync] Firestore DB instance not available, using fallback.");
       useFallback = true;
     }
 
@@ -1249,9 +1272,19 @@ app.post("/api/user/sync", async (req, res) => {
       };
 
       try {
-        await db.collection("users").doc(uid).update(baseUpdate);
+        console.log(`[User Sync] [STEP 3] Firestore Update start...`);
+        const updateTask = db.collection("users").doc(uid).update(baseUpdate);
+        await withTimeout(updateTask, 3000, "Firestore Update (Sync)");
+        
         const mergedData = { ...existingData, ...baseUpdate };
-        const membership = await checkAndUpdateMembershipStatus(db.collection("users").doc(uid), mergedData);
+        console.log(`[User Sync] [STEP 4] Membership Status check start...`);
+        const membership = await withTimeout(
+          checkAndUpdateMembershipStatus(db.collection("users").doc(uid), mergedData),
+          3000,
+          "Membership Status Sync"
+        );
+        
+        console.log(`[User Sync] [END] Success. Total duration: ${Date.now() - startTime}ms`);
         return res.json({ ...mergedData, ...membership });
       } catch (writeErr: any) {
         console.warn("[User Sync] Firestore write failed under valid read doc. Swapping to fallback mechanism.", writeErr.message);
@@ -1260,6 +1293,7 @@ app.post("/api/user/sync", async (req, res) => {
     }
 
     // Fallback or New User flow
+    console.log(`[User Sync] [FLOW] New User or Fallback Triggered.`);
     const profileData = existingProfile || {};
     const trialDurationMs = 72 * 60 * 60 * 1000;
     const trialStart = parseTimestamp(profileData.trialStart) || now;
@@ -1298,21 +1332,25 @@ app.post("/api/user/sync", async (req, res) => {
     // Attempt to write the new user doc to database if we are not forcing fallback
     if (db && !useFallback) {
       try {
-        await db.collection("users").doc(uid).set(computedUser);
+        console.log(`[User Sync] [STEP 5] New User Set start...`);
+        const setTask = db.collection("users").doc(uid).set(computedUser);
+        await withTimeout(setTask, 3000, "Firestore Set (Sync)");
+        console.log(`[User Sync] [END] Success (New User). Total duration: ${Date.now() - startTime}ms`);
         return res.json(computedUser);
       } catch (setErr: any) {
         console.warn("[User Sync] Database entry storage permission denied. Responding with client-management flags.", setErr.message);
       }
     }
 
-    // Respond withcomputed properties and signal the client to write it directly (it has verified Rules access!)
+    // Respond with computed properties and signal the client to write it directly (it has verified Rules access!)
+    console.log(`[User Sync] [END] Success (Resilient Fallback). Total duration: ${Date.now() - startTime}ms`);
     return res.json({
       ...computedUser,
       resilientFallback: true
     });
 
   } catch (error: any) {
-    console.error("[User Sync] Fatal Error:", error);
+    console.error("[User Sync] Fatal Error after", Date.now() - startTime, "ms:", error);
     res.status(500).json({ error: "Failed to sync user" });
   }
 });
@@ -1712,6 +1750,7 @@ const getPricing = (planId: string, billingCycle: string, country: string) => {
 
 // 1. Create Subscription Order
 app.post("/api/subscription/create-order", async (req, res) => {
+  const startTime = Date.now();
   const { planId, billingCycle, userId, userEmail, userName, timezone, locale } = req.body;
   const clientIp = req.headers['x-forwarded-for']?.toString() || req.socket.remoteAddress;
 
@@ -1719,15 +1758,22 @@ app.post("/api/subscription/create-order", async (req, res) => {
     return res.status(400).json({ error: "Missing required parameters." });
   }
 
+  console.log(`[Subscription Order] [START] for User: ${userId} (Email: ${userEmail})`);
+
   try {
+    console.log(`[Subscription Order] [STEP 1] Detect Country start...`);
     const country = await detectCountry(userEmail || '', locale, timezone, clientIp);
+    console.log(`[Subscription Order] [STEP 1] Country: ${country} (Duration: ${Date.now() - startTime}ms)`);
+
     const { amount, currency } = getPricing(planId, billingCycle, country);
     const finalAmount = Math.round(amount * 100);
 
+    console.log(`[Subscription Order] [STEP 2] Get Razorpay start...`);
     const rzp = getRazorpay();
     if (!rzp) throw new Error("Razorpay not initialized.");
 
-    const order = await rzp.orders.create({
+    console.log(`[Subscription Order] [STEP 3] Razorpay Order Creation start...`);
+    const rzpCreateTask = rzp.orders.create({
       amount: finalAmount,
       currency,
       receipt: `sub_${Date.now()}_${userId.slice(-4)}`,
@@ -1735,8 +1781,10 @@ app.post("/api/subscription/create-order", async (req, res) => {
       notes: { userId, planId, billingCycle, country, source: 'vibeos_sovereign_engine' }
     });
 
-    console.log(`[Subscription] Order Created: ${order.id} | User: ${userId} | Amount: ${amount} ${currency}`);
+    const order = await withTimeout(rzpCreateTask, 5000, "Razorpay API") as any;
+    console.log(`[Subscription Order] [STEP 3] Razorpay Order end. ID: ${order.id} (Duration: ${Date.now() - startTime}ms)`);
 
+    console.log(`[Subscription Order] [END] Success. Total duration: ${Date.now() - startTime}ms`);
     res.json({
       orderId: order.id,
       amount: order.amount,
@@ -1764,7 +1812,7 @@ app.post("/api/subscription/create-order", async (req, res) => {
       }
     });
   } catch (error: any) {
-    console.error("[Subscription] Order Error:", error);
+    console.error(`[Subscription Order] Fatal Error after ${Date.now() - startTime}ms:`, error);
     res.status(500).json({ error: error.message });
   }
 });
