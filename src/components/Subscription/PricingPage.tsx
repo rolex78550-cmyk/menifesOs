@@ -93,14 +93,20 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onClose }) => {
   };
 
   return (
-    <div id="pricing-page" className="min-h-screen bg-black text-white selection:bg-indigo-500/30 overflow-x-hidden">
-      {/* Background Orbs */}
+    <div id="pricing-page" className="min-h-screen bg-[#050505] text-white selection:bg-indigo-500/30 overflow-x-hidden font-sans">
+      {/* Background Orbs - Inspired by the atmosphere in the image */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-indigo-900/20 rounded-full blur-[120px]" />
-        <div className="absolute top-[20%] -right-[10%] w-[30%] h-[30%] bg-purple-900/10 rounded-full blur-[100px]" />
+        <div className="absolute top-[-20%] left-[-10%] w-[70vw] h-[70vw] bg-indigo-600/10 rounded-full blur-[150px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-purple-600/10 rounded-full blur-[120px]" />
+        <div className="absolute top-[20%] right-[-5%] w-[40vw] h-[40vw] bg-blue-500/5 rounded-full blur-[100px]" />
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-6 py-20">
+      {/* Large Background Text */}
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none opacity-[0.02]">
+        <h2 className="text-[25vw] font-black tracking-tighter leading-none">PRICING</h2>
+      </div>
+
+      <div className="relative z-10 max-w-7xl mx-auto px-6 py-20 pb-40">
         {/* Trial Banner */}
         <AnimatePresence>
           {isTrialing && (
@@ -108,19 +114,18 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onClose }) => {
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="bg-indigo-600/20 border border-indigo-500/30 rounded-2xl p-4 mb-12 flex items-center justify-between backdrop-blur-md"
+              className="max-w-2xl mx-auto bg-white/5 border border-white/10 rounded-2xl p-4 mb-20 flex items-center justify-between backdrop-blur-3xl"
             >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-500 rounded-lg">
-                  <Zap className="w-5 h-5 text-white" />
+              <div className="flex items-center gap-3 text-left">
+                <div className="p-2 bg-indigo-500/20 border border-indigo-500/30 rounded-lg">
+                  <Zap className="w-4 h-4 text-indigo-400" />
                 </div>
                 <div>
-                  <p className="font-bold text-sm">3-Day Celestial Trial Active</p>
-                  <p className="text-zinc-400 text-xs">Explore all Sovereign features. No commitment required.</p>
+                  <p className="font-bold text-sm tracking-tight text-white/90">3-Day Celestial Trial Active</p>
+                  <p className="text-zinc-500 text-xs">Explore all Sovereign features. No commitment required.</p>
                 </div>
               </div>
-              <div className="hidden md:block text-right">
-                <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Trial Status</p>
+              <div className="hidden md:block">
                 <div className="h-1.5 w-32 bg-white/10 rounded-full overflow-hidden">
                   <div className="h-full bg-indigo-500 rounded-full" style={{ width: '60%' }} />
                 </div>
@@ -130,115 +135,83 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onClose }) => {
         </AnimatePresence>
 
         {/* Header */}
-        <div className="text-center mb-16">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 mb-6"
-          >
-            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-            <span className="text-xs font-medium tracking-widest uppercase">Limitless Potential</span>
-          </motion.div>
+        <div className="text-center mb-24">
           <motion.h1
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-5xl md:text-7xl font-bold tracking-tight mb-6 bg-clip-text text-transparent bg-gradient-to-b from-white to-white/50"
+            className="text-6xl md:text-8xl font-bold tracking-tighter mb-8 bg-clip-text text-transparent bg-gradient-to-b from-white to-white/40"
           >
-            Ascend to Sovereign.
+            Pricing
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed"
+            transition={{ delay: 0.1 }}
+            className="text-zinc-400 text-lg md:text-xl font-medium tracking-tight max-w-xl mx-auto"
           >
-            Remove the boundaries. Experience the full depth of Vibe OS with quantum-grade features and priority awareness.
+            For seekers who require absolute alignment and boundless permission within the OS.
           </motion.p>
         </div>
 
-        {/* Currency & Toggle */}
-        <div className="flex flex-col items-center gap-8 mb-16">
-          <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
-            {(['INR', 'USD'] as Currency[]).map((c) => (
-              <button
-                key={c}
-                id={`currency-${c}`}
-                onClick={() => setCurrency(c)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  currency === c ? 'bg-white text-black' : 'text-zinc-500 hover:text-white'
-                }`}
-              >
-                {c === 'INR' ? '₹ INR' : '$ USD'}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex p-1 bg-white/5 border border-white/10 rounded-full">
-            {(['monthly', 'yearly', 'lifetime'] as BillingCycle[]).map((cycle) => (
-              <button
-                key={cycle}
-                id={`cycle-${cycle}`}
-                onClick={() => setBillingCycle(cycle)}
-                className={`relative px-6 py-2 rounded-full text-sm font-medium transition-all ${
-                  billingCycle === cycle ? 'text-white' : 'text-zinc-500 hover:text-white'
-                }`}
-              >
-                {billingCycle === cycle && (
-                  <motion.div
-                    layoutId="cycle-bg"
-                    className="absolute inset-0 bg-indigo-600 rounded-full"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                  />
-                )}
-                <span className="relative z-10 capitalize">
-                  {cycle}
-                  {cycle === 'yearly' && (
-                    <span className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap bg-emerald-500 text-[10px] text-white px-2 py-0.5 rounded-full font-bold">
-                      BEST VALUE
-                    </span>
-                  )}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Pricing Card */}
-        <div className="flex justify-center mb-24">
+        {/* Plan Selection Layout */}
+        <div className="flex flex-col md:flex-row items-center justify-center gap-8 mb-32">
+          {/* Comparison / Free (Placeholder to match 3-card density) */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="w-full max-w-sm h-full bg-white/[0.02] border border-white/5 rounded-[2.5rem] p-10 backdrop-blur-md opacity-40 grayscale pointer-events-none"
+          >
+            <h3 className="text-xl font-bold mb-1">Novice</h3>
+            <div className="text-3xl font-bold mb-6">Free</div>
+            <p className="text-zinc-500 text-sm mb-8">Basic vibration metrics and essential oracle access.</p>
+            <div className="space-y-4 mb-10">
+              {plan.benefits.slice(0, 3).map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="w-5 h-5 rounded-full border border-white/10 flex items-center justify-center">
+                    <Check className="w-3 h-3" />
+                  </div>
+                  <div className="h-2 w-24 bg-white/10 rounded" />
+                </div>
+              ))}
+            </div>
+            <div className="w-full py-4 rounded-full border border-white/10 text-center text-sm font-bold">Standard</div>
+          </motion.div>
+
+          {/* Primary Sovereign Card */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             className="w-full max-w-lg relative group"
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-[2.5rem] blur opacity-20 group-hover:opacity-30 transition-opacity" />
-            <div className="relative bg-zinc-900/80 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-8 md:p-12">
-              <div className="flex justify-between items-start mb-8">
+            {/* Pulsing Border Effect */}
+            <div className="absolute -inset-[1px] bg-gradient-to-r from-indigo-500/50 via-purple-500/50 to-blue-500/50 rounded-[3rem] blur-[2px] opacity-100 group-hover:blur-[4px] transition-all" />
+            
+            <div className="relative h-full bg-[#0a0a0a]/90 backdrop-blur-[60px] border border-white/10 rounded-[3rem] p-8 md:p-14 flex flex-col">
+              <div className="flex justify-between items-start mb-12">
                 <div>
-                  <h3 className="text-2xl font-bold mb-2 flex items-center gap-2">
-                    <Crown className="w-6 h-6 text-indigo-500" />
-                    Sovereign
-                  </h3>
-                  <p className="text-zinc-400 text-sm">Everything Vibe OS has to offer.</p>
+                  <h3 className="text-3xl font-bold mb-2 tracking-tight">Sovereign</h3>
+                  <p className="text-indigo-400 text-xs font-black uppercase tracking-[0.2em]">High Performance</p>
                 </div>
                 <div className="text-right">
-                  <div className="text-4xl md:text-5xl font-bold">
+                  <div className="text-5xl md:text-6xl font-black tracking-tighter">
                     {currency === 'INR' ? '₹' : '$'}
                     {plan.pricing[currency][billingCycle]}
                   </div>
-                  <div className="text-xs text-zinc-500 mt-1 uppercase tracking-widest font-semibold">
-                    per {billingCycle === 'lifetime' ? 'eternity' : billingCycle.replace('ly', '')}
-                  </div>
+                  <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mt-2">
+                    /{billingCycle === 'lifetime' ? '∞' : billingCycle.slice(0, 1)}
+                  </p>
                 </div>
               </div>
 
-              <div className="space-y-4 mb-10">
+              <div className="space-y-6 mb-16 flex-grow">
                 {plan.benefits.map((benefit, i) => (
-                  <div key={i} className="flex items-start gap-3">
-                    <div className="mt-1 flex-shrink-0 w-5 h-5 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
-                      <Check className="w-3 h-3 text-indigo-500" />
+                  <div key={i} className="flex items-center gap-4 group/item">
+                    <div className="w-6 h-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center group-hover/item:border-indigo-500/50 transition-colors">
+                      <Check className="w-3.5 h-3.5 text-white/80" />
                     </div>
-                    <span className="text-zinc-300 text-sm md:text-base">{benefit}</span>
+                    <span className="text-zinc-300 text-sm md:text-base font-medium tracking-tight">
+                      {benefit}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -247,21 +220,63 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onClose }) => {
                 id="subscribe-button"
                 disabled={loading}
                 onClick={handleSubscribe}
-                className="w-full relative group/btn bg-white text-black py-4 rounded-2xl font-bold text-lg overflow-hidden transition-transform active:scale-[0.98] disabled:opacity-50"
+                className="w-full py-5 bg-white text-black rounded-full font-black text-sm uppercase tracking-[0.15em] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 relative overflow-hidden"
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 opacity-0 group-hover/btn:opacity-100 transition-opacity" />
-                <span className="relative z-10 flex items-center justify-center gap-2 group-hover/btn:text-white transition-colors uppercase tracking-widest text-sm">
-                  {loading ? 'Aligning...' : 'Ascend Now'}
-                  <ArrowRight className="w-4 h-4" />
-                </span>
+                {loading ? 'Initializing Alignment...' : 'Choose Plan'}
               </button>
-
-              <p className="text-center text-zinc-500 text-[10px] mt-6 leading-relaxed">
-                Secured by Razorpay. Cancel anytime. <br />
-                By subscribing, you agree to our Terms of Service.
-              </p>
             </div>
           </motion.div>
+
+          {/* Business / Pro (Placeholder to match 3-card density) */}
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="w-full max-w-sm h-full bg-white/[0.02] border border-white/5 rounded-[2.5rem] p-10 backdrop-blur-md opacity-40 grayscale pointer-events-none hidden lg:block"
+          >
+            <h3 className="text-xl font-bold mb-1">Covenant</h3>
+            <div className="text-3xl font-bold mb-6">Custom</div>
+            <p className="text-zinc-500 text-sm mb-8">Group alignment for covens and spiritual collectives.</p>
+            <div className="space-y-4 mb-10 text-white/20">
+               <div className="h-2 w-full bg-white/5 rounded" />
+               <div className="h-2 w-3/4 bg-white/5 rounded" />
+               <div className="h-2 w-full bg-white/5 rounded" />
+            </div>
+            <div className="w-full py-4 rounded-full border border-white/10 text-center text-sm font-bold">Contact</div>
+          </motion.div>
+        </div>
+
+        {/* Floating Controls at bottom like in the image */}
+        <div className="flex flex-col items-center gap-6">
+          <div className="flex p-1 bg-white/5 border border-white/10 rounded-full backdrop-blur-xl">
+             <div className="flex px-4 gap-6 py-2">
+                {(['monthly', 'yearly', 'lifetime'] as BillingCycle[]).map((cycle) => (
+                  <button
+                    key={cycle}
+                    id={`cycle-btn-${cycle}`}
+                    onClick={() => setBillingCycle(cycle)}
+                    className={`text-[10px] font-black uppercase tracking-widest transition-all ${
+                      billingCycle === cycle ? 'text-white' : 'text-zinc-600 hover:text-white/60'
+                    }`}
+                  >
+                    {cycle}
+                  </button>
+                ))}
+             </div>
+          </div>
+          
+          <div className="flex items-center gap-4 text-zinc-600">
+            <span className={`text-[10px] font-black uppercase tracking-tighter ${currency === 'INR' ? 'text-indigo-400' : ''}`}>INR</span>
+            <button 
+              onClick={() => setCurrency(prev => prev === 'INR' ? 'USD' : 'INR')}
+              className="w-10 h-5 bg-white/10 rounded-full relative p-1 transition-colors hover:bg-white/20"
+            >
+               <motion.div 
+                 animate={{ x: currency === 'INR' ? 0 : 20 }}
+                 className="w-3 h-3 bg-white rounded-full" 
+               />
+            </button>
+            <span className={`text-[10px] font-black uppercase tracking-tighter ${currency === 'USD' ? 'text-indigo-400' : ''}`}>USD</span>
+          </div>
         </div>
 
         {/* Trust Section */}

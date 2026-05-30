@@ -102,7 +102,6 @@ import path from "path";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import { createServer as createViteServer } from "vite";
 import schedule from "node-schedule";
 import Razorpay from "razorpay";
 import crypto from "crypto";
@@ -2157,6 +2156,7 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
