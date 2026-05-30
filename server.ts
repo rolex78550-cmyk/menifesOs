@@ -494,8 +494,11 @@ async function initializeFirestore() {
         console.log(`[Firebase] Attempting to connect to database: ${dbId || '(default)'}`);
         const tempDb = dbId && dbId !== "(default)" ? getFirestore(adminApp, dbId) : getFirestore(adminApp);
         
-        // Connectivity Probe
-        await tempDb.collection("habits").limit(1).get();
+        // Connectivity Probe (Simplified for Serverless)
+        const isVercel = process.env.VERCEL === '1' || !!process.env.NOW_REGION;
+        if (!isVercel) {
+          await tempDb.collection("habits").limit(1).get();
+        }
         
         db = tempDb;
         isDbHealthy = true;
@@ -2242,35 +2245,21 @@ app.get("/api/admin/infra-check", (req, res) => {
 
 // Start server execution
 async function startServer() {
-  // 1. Initialize Firestore first
-  await initializeFirestore();
-
-  // Startup Razorpay dynamic credentials verification test
-  try {
-    const rzpCreds = getRzpCredentials();
-    console.log(`[Razorpay Startup Test] Testing initialized credentials for ID: ${rzpCreds.key_id.substring(0, 8)}...`);
-    
-    const razorpay = new Razorpay({
-      key_id: rzpCreds.key_id,
-      key_secret: rzpCreds.key_secret,
-    });
-
-    await razorpay.orders.all({ count: 1 });
-    console.log("[Razorpay Startup Test] SUCCESS: Authentication verified and operational on Razorpay API.");
-  } catch (error: any) {
-    console.error("========== RAZORPAY AUTH FAIL ==========");
-    console.error("[Razorpay Startup Test] Authentication / validation check failed!");
-    console.error("Error Message:", error.message || error);
-    if (error.statusCode) {
-      console.error("HTTP Status Code:", error.statusCode);
-    }
-    if (error.error) {
-      console.error("Detailed Razorpay Error Payload:", JSON.stringify(error.error, null, 2));
-    }
-    console.error("========================================");
+  const isVercel = process.env.VERCEL === '1' || !!process.env.NOW_REGION;
+  
+  if (isVercel) {
+    console.log("[Startup] Serverless environment detected. Skipping background schedulers and long probes.");
+    return app;
   }
 
-  // 2. Start Background Scheduler
+  // 1. Initialize Firestore (Lazy or Direct)
+  try {
+    await initializeFirestore();
+  } catch (e) {
+    console.error("[Startup] Firestore direct init failed (will retry via middleware):", e);
+  }
+
+  // 2. Start Background Scheduler (Only in persistent environments)
   startScheduler();
   startStreakDangerScheduler();
 
@@ -2284,10 +2273,12 @@ async function startServer() {
   } else {
     // Production: Serve static files from dist
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
   }
 
   // Start server (only if not in Vercel/Serverless environment)
@@ -2300,6 +2291,12 @@ async function startServer() {
   return app;
 }
 
-startServer();
+// In persistent environments, we call startServer. 
+// In serverless, we export the app and let the middleware handle lazy init.
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  startServer().catch(err => {
+    console.error("[Startup] Critical server startup failure:", err);
+  });
+}
 
 export default app;
