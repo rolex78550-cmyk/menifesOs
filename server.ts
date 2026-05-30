@@ -91,7 +91,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 const app = express();
 app.set("trust proxy", 1);
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Gemini Initialization
 const ai = new GoogleGenAI({
@@ -380,6 +380,18 @@ app.get("/api/admin/razorpay-debug", (req, res) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Initialization Middleware for Serverless / Lazy Startup
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api/') && !admin.apps.length) {
+    try {
+      await initializeFirestore();
+    } catch (err) {
+      console.error("[Startup] Lazy Firestore Init Fail:", err);
+    }
+  }
+  next();
 });
 
 app.use(express.json());
@@ -2278,10 +2290,12 @@ async function startServer() {
     });
   }
 
-  // Start server
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Vibe OS] Server running on http://localhost:${PORT}`);
-  });
+  // Start server (only if not in Vercel/Serverless environment)
+  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`[Vibe OS] Server running on http://localhost:${PORT}`);
+    });
+  }
 
   return app;
 }
