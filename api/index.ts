@@ -5,22 +5,20 @@ import fs from "fs";
 // Priority 1: System Environment
 dotenv.config();
 
-// Priority 2: .env.example manually parsed to allow explicit overrides for Razorpay keys if they look real
+// Priority 2: .env.example fallback (ONLY if keys are missing from system env)
 if (fs.existsSync(".env.example")) {
   try {
     const exampleContent = fs.readFileSync(".env.example", "utf-8");
     const parsed = dotenv.parse(exampleContent);
     for (const key in parsed) {
       const val = parsed[key]?.trim();
-      if (val && !val.includes("PLACEHOLDER") && !val.includes("YOUR_") && val.length > 5) {
-        // We override Razorpay variables specifically if valid values are found in example file
-        if (key.includes("RAZORPAY") || key === "RAZORPAY_ID") {
-          process.env[key] = val;
-        }
+      // Only use fallback if not already defined in system environment
+      if (!process.env[key] && val && !val.includes("PLACEHOLDER") && !val.includes("YOUR_") && val.length > 5) {
+        process.env[key] = val;
       }
     }
   } catch (err) {
-    console.error("[Startup] Failed to parse .env.example override:", err);
+    console.error("[Startup] Failed to parse .env.example fallback:", err);
   }
 }
 
@@ -66,7 +64,11 @@ const normalizeRzpKeys = () => {
       const clean = sanitizeConfigStr(cand.val);
       if (!clean) continue;
       if (clean.includes("PLACEHOLDER") || clean.includes("YOUR_")) continue;
-      if (isId && !clean.startsWith("rzp_")) continue;
+      // Relaxed prefix check: prefers rzp_ but allows non-prefixed if it looks like a valid key (length check)
+      if (isId && !clean.startsWith("rzp_") && clean.length < 10) {
+        console.log(`[Razorpay Audit] Skipping candidate ${cand.name} - failed ID validation (Prefix missing or too short)`);
+        continue;
+      }
       if (!isId && clean.length < 5) continue;
       return clean;
     }
@@ -219,12 +221,20 @@ const getRzpCredentials = () => {
     process.env.VITE_RAZORPAY_KEY_SECRET
   ];
 
+  console.log("[Razorpay DEBUG] ID Candidates Raw (Count):", idCandidates.filter(Boolean).length);
+  console.log("[Razorpay DEBUG] Secret Candidates Raw (Count):", secretCandidates.filter(Boolean).length);
+  
+  // Log specific env existence without values for security
+  console.log("[Razorpay DEBUG] RAZORPAY_KEY_ID exists:", !!process.env.RAZORPAY_KEY_ID, process.env.RAZORPAY_KEY_ID?.substring(0, 4) + "...");
+  console.log("[Razorpay DEBUG] RAZORPAY_KEY_SECRET exists:", !!process.env.RAZORPAY_KEY_SECRET, process.env.RAZORPAY_KEY_SECRET ? "YES" : "NO");
+
   const findFirstValid = (list: any[], isId: boolean) => {
     for (const raw of list) {
       const clean = sanitizeConfigStr(raw);
       if (!clean) continue;
       if (clean.includes("PLACEHOLDER") || clean.includes("YOUR_")) continue;
-      if (isId && !clean.startsWith("rzp_")) continue;
+      // Relaxed prefix check: still prefers rzp_ but allows non-prefixed if it looks long enough to be a valid key
+      if (isId && !clean.startsWith("rzp_") && clean.length < 10) continue;
       if (!isId && clean.length < 5) continue;
       return clean;
     }
@@ -1113,7 +1123,7 @@ const detectCountry = async (email: string, locale?: string, timezone?: string, 
           return res.json();
         });
 
-        const geoData: any = await withTimeout(geoFetch, 1500, "Geo-IP Lookup");
+        const geoData: any = await withTimeout(geoFetch, 1000, "Geo-IP Lookup");
         
         if (geoData && geoData.country_code) {
           console.log(`[Country Detection] Matched ${geoData.country_code} from Geolocation in ${Date.now() - startTime}ms`);
@@ -1769,6 +1779,9 @@ app.post("/api/subscription/create-order", async (req, res) => {
     const finalAmount = Math.round(amount * 100);
 
     console.log(`[Subscription Order] [STEP 2] Get Razorpay start...`);
+    console.log("[DEBUG] RAZORPAY_KEY_ID from env:", process.env.RAZORPAY_KEY_ID ? process.env.RAZORPAY_KEY_ID.substring(0, 4) + "..." : "MISSING");
+    console.log("[DEBUG] RAZORPAY_KEY_SECRET exists:", !!process.env.RAZORPAY_KEY_SECRET);
+    
     const rzp = getRazorpay();
     if (!rzp) throw new Error("Razorpay not initialized.");
 
@@ -1781,7 +1794,7 @@ app.post("/api/subscription/create-order", async (req, res) => {
       notes: { userId, planId, billingCycle, country, source: 'vibeos_sovereign_engine' }
     });
 
-    const order = await withTimeout(rzpCreateTask, 5000, "Razorpay API") as any;
+    const order = await withTimeout(rzpCreateTask, 3000, "Razorpay API") as any;
     console.log(`[Subscription Order] [STEP 3] Razorpay Order end. ID: ${order.id} (Duration: ${Date.now() - startTime}ms)`);
 
     console.log(`[Subscription Order] [END] Success. Total duration: ${Date.now() - startTime}ms`);
